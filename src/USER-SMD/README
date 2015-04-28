@@ -1,0 +1,46 @@
+needs to be filled in
+
+The person who created this package is Georg Ganzenmuller at the
+Fraunhofer-Institute for High-Speed Dynamics, Ernst Mach Institute in
+Germany (georg.ganzenmueller at emi.fhg.de).  Contact him directly if
+you have questions.
+
+
+input for pair style tlsph
+
+*COMMON keyword: this needs to be the first keyword and is mandatory. 
+	(1) reference density
+    (2) Young's modulus
+    (3) Poisson ratio
+    (4) linear viscosity coefficient
+    (5) quadratic viscosity coefficient
+    (6) hourglass control coefficient
+    (7) heat capacity [energy / (mass * temperature)]
+    
+    from the above quantities, the following parameters are calculated
+    (A) Lame constants lambda
+    (B) shear modulus
+    (C) signal velocity
+    
+MATERIAL MODELS
+===============
+
+Linear elasticity model with no separation of pressure and stress deviator.
+keyword: *LINEAR_DEFGRAD
+number of trailing parameters: 0
+This material model is based on the deformation gradient only and performs no time integration of the stress rate.
+Material properties are derived from *COMMON parameters.
+
+MATERIAL STRENGTH MODELS
+========================
+
+keyword: *LINEAR
+number of trailing parameters: 0
+description: This material model is linear elastic.
+
+keyword: *LINEAR_PLASTIC
+number of trailing parameters: 1
+	(1) constant yield stress
+description: This material model is linear elastic -- perfectly plastic.
+
+
