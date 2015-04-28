@@ -1653,7 +1653,7 @@ void PairTlsph::init_style() {
 		fixarg[0] = (char *) "SMD_TLSPH_NEIGHBORS";
 		fixarg[1] = (char *) "tlsph";
 		fixarg[2] = (char *) "SMD_TLSPH_NEIGHBORS";
-		modify->add_fix(3, fixarg, suffix);
+		modify->add_fix(3, fixarg);
 		delete[] fixarg;
 		fix_tlsph_reference_configuration = (FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[modify->nfix - 1];
 		fix_tlsph_reference_configuration->pair = this;
