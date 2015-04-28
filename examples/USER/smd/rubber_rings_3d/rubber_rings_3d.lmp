@@ -1,0 +1,73 @@
+# TLSPH example: 3d rubber rings impact
+
+# define initial parameters
+variable        l0 equal 0.3 # lattice spacing for creating particles
+variable        rho equal 1 # initial mass density
+variable        E equal 1.0 # Young's modulus
+variable        nu equal 0.3 # Poisson ratio
+variable        sigma_yield equal 0.051 # plastic yield stress for bar 2
+variable        skin equal 4.0*${l0} # Verlet list range
+variable        vel equal 100.0 # pull velocity
+
+units           si # si means: a consistent system of units is used. Here: mm / GPa / ms
+dimension       3 # this is a 2d plane-strain simulation
+boundary        sm sm sm # simulation box boundaries
+atom_style      smd
+neighbor        ${skin} bin
+comm_style      brick
+neigh_modify    every 10 delay 0 check yes # re-build neighbor list every 10 steps
+newton          off # required for SMD simulations!
+comm_modify     vel yes # required for SMD simulations!
+atom_modify     map array
+
+# read particle data
+read_data       washer_hex_adjusted.data
+group           tlsph union all
+replicate       2 1 1
+region          right block 12.2 EDGE EDGE EDGE EDGE EDGE units box
+group           right region right
+group           left subtract all right
+set             group left type 1
+set             group right type 2
+set             group all smd_contact_radius 1.0
+
+pair_style      hybrid/overlay tlsph smd/hertz 1.0 # activate Total-Lagrangian SPH
+#                                 rh0    E    nu    Q1    Q2   hg    Cp
+pair_coeff      1 1 tlsph *COMMON ${rho} ${E} ${nu} 0.56  0.0  0 1.0 &
+                *LINEAR_STRENGTH &
+		*EOS_LINEAR &
+                *END
+pair_coeff      2 2 tlsph *COMMON ${rho} ${E} ${nu} 1.06  0.0  0 1.0 &
+                *LINEAR_PLASTICITY ${sigma_yield} 0.0 &
+		*EOS_LINEAR &
+                *END
+pair_coeff      1 1 smd/hertz 0.2
+pair_coeff      2 2 smd/hertz 0.2
+pair_coeff      1 2 smd/hertz 0.2
+
+compute         S all smd/tlsph_stress # Cauchy stress tensor
+compute         nn all smd/tlsph_num_neighs # number of neighbors for each particle
+compute         cr all smd/contact_radius
+compute         p all smd/plastic_strain
+compute         eint all smd/internal_energy
+compute         alleint all reduce sum c_eint
+variable        etot equal c_alleint+ke+pe
+
+dump            dump_id all custom 100 dump.LAMMPS id type x y z &
+                c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn c_cr proc c_p radius
+dump_modify     dump_id first yes
+
+# apply velocity boundary condition to top and bottom rows of particles
+velocity        left set  ${vel} 0 0 sum no units box 
+velocity        right set -${vel} 0 0 sum no units box 
+
+fix             integration_fix all smd/integrate_tlsph xsph
+fix             dtfix all smd/adjust_dt 0.1
+#fix             balance_fix all balance 1000 1.05 rcb
+
+thermo 100
+thermo_style    custom step dt f_dtfix ke pe v_etot
+
+#balance         1.0 rcb
+
+run             5000

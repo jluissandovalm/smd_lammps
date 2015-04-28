@@ -1,0 +1,70 @@
+# TLSPH example: simple shear, See Pronto 2d example 9.1
+
+# define initial parameters
+variable        l0 equal 1.0 # lattice spacing for creating particles
+variable        rho equal 1 # initial mass density
+variable        E equal 1.0 # Young's modulus
+variable        nu equal 0.0 # Poisson ratio
+variable        h equal 3.01*${l0} # SPH smoothing kernel diameter
+variable        vol_one equal ${l0}^2 # volume of one particle
+variable        mass_one equal ${vol_one}*${rho} # mass of one particle
+variable        skin equal 0.5*${l0} # Verlet list range
+variable        vel equal 2.0 # pull velocity
+
+units           si # si means: a consistent system of units is used. Here: mm / GPa / ms
+dimension       2 # this is a 2d plane-strain simulation
+boundary        sm sm p # simulation box boundaries
+atom_style      smd 
+neighbor        ${skin} bin
+neigh_modify    once yes #
+newton          off # required for SMD simulations!
+comm_modify     vel yes # required for SMD simulations!
+atom_modify     map array
+
+# create simulation box and particles
+lattice         sq ${l0}
+region          box block 0 10 0 10 -0.01 0.01 units box
+create_box      1 box
+create_atoms    1 box
+set             group all mass ${mass_one}
+set             group all volume ${vol_one}
+set             group all diameter ${h}
+group           tlsph type 1
+
+# create velocity profile for simple shear
+velocity        all ramp vx 0 ${vel} y 0 10 units box
+
+pair_style      tlsph # activate Total-Lagrangian SPH
+#                           rh0    E    nu    Q1    Q2   hg    Cp
+pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} 0.06  0.0  100 1.0 &
+                *LINEAR_STRENGTH &
+                *EOS_LINEAR &
+                *END
+
+compute         S all smd/tlsph_stress # Cauchy stress tensor
+compute         D all smd/tlsph_strain_rate
+compute         nn all smd/tlsph_num_neighs # number of neighbors for each particle
+compute         Sxy_ave all reduce ave c_S[4]
+variable        shear_stress equal c_Sxy_ave
+compute         Sxx_ave all reduce ave c_S[1]
+variable        normal_stress equal c_Sxx_ave
+
+dump            dump_id all custom 1 dump.LAMMPS id type x y z &
+                c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn 
+dump_modify     dump_id first yes
+
+#
+timestep        0.05
+fix             force_fix all setforce 0 0 0
+#variable        stress equal 0.5*(f_botfix[2]-f_topfix[2])/20 
+variable        shear_strain equal (${vel}*time/10.0) # strain: relative elongation
+variable        gamma equal 0.5*v_shear_strain
+variable        dt equal dt
+fix             integration_fix all smd/integrate_tlsph
+fix             stress_curve all print 10 "${gamma} ${shear_stress} ${normal_stress}" file stress_strain.dat screen no
+
+
+thermo 100
+thermo_style    custom step dt time v_gamma
+
+run             800
