@@ -50,7 +50,7 @@ compute         Sxx_ave all reduce ave c_S[1]
 variable        normal_stress equal c_Sxx_ave
 
 dump            dump_id all custom 1 dump.LAMMPS id type x y z &
-                c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn 
+                c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn fx fy
 dump_modify     dump_id first yes
 
 #
@@ -67,4 +67,6 @@ fix             stress_curve all print 10 "${gamma} ${shear_stress} ${normal_str
 thermo 100
 thermo_style    custom step dt time v_gamma
 
-run             800
+run             100
+unfix           force_fix
+run             1

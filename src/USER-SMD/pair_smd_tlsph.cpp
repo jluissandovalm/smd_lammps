@@ -70,7 +70,7 @@ PairTlsph::PairTlsph(LAMMPS *lmp) :
 
 	onerad_dynamic = onerad_frozen = maxrad_dynamic = maxrad_frozen = NULL;
 
-	strengthModel = eos = NULL;
+	strengthModel = eos = failureModel = NULL;
 
 	nmax = 0; // make sure no atom on this proc such that initial memory allocation is correct
 	Fdot = Fincr = K = PK1 = NULL;
@@ -101,6 +101,7 @@ PairTlsph::~PairTlsph() {
 		memory->destroy(cutsq);
 		memory->destroy(strengthModel);
 		memory->destroy(eos);
+		memory->destroy(failureModel);
 		memory->destroy(Lookup);
 
 		delete[] onerad_dynamic;
@@ -137,6 +138,7 @@ void PairTlsph::PreCompute() {
 	int *mol = atom->molecule;
 	double *vfrac = atom->vfrac;
 	double *radius = atom->radius;
+	double *damage = atom->damage;
 	double **x0 = atom->x0;
 	double **x = atom->x;
 	double **v = atom->vest; // extrapolated velocities corresponding to current positions
@@ -146,10 +148,16 @@ void PairTlsph::PreCompute() {
 	int nlocal = atom->nlocal;
 	int jnum, jj, i, j, itype, idim;
 
-	tagint **partner = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->partner;
-	int *npartner = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->npartner;
-	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
-	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
+	tagint **partner =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->partner;
+	int *npartner =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->npartner;
+	float **wfd_list =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
+	float **wf_list =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
+	float **degradation_ij =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
 	double r0, r0Sq, wf, wfd, h, irad, voli, volj;
 	Vector3d dx0, dx, dv, g;
 	Matrix3d Ktmp, Fdottmp, Ftmp, L, Fold, U, eye;
@@ -242,8 +250,12 @@ void PairTlsph::PreCompute() {
 
 			//barbara_kernel_and_derivative(h, r0, domain->dimension, wf, wfd);
 			//spiky_kernel_and_derivative(h, r0, wf, wfd);
-			wf = wf_list[i][jj];
-			wfd = wfd_list[i][jj];
+
+			// scale the interaction according to the damage variable
+			double scale = 1.0 - degradation_ij[i][jj];
+
+			wf = wf_list[i][jj] * scale;
+			wfd = wfd_list[i][jj] * scale;
 			g = (wfd / r0) * dx0;
 
 			/* build matrices */
@@ -269,8 +281,11 @@ void PairTlsph::PreCompute() {
 		itype = type[i];
 		if (setflag[itype][itype] == 1) { // we only do the subsequent calculation if pair style is defined for this particle
 
-			if ((numNeighsRefConfig[i] < domain->dimension + 2) && (mol[i] > 0)) { // cannot possibly invert shape matrix
-				printf("deleting particle [%d] because number of neighbors=%d is too small\n", tag[i], numNeighsRefConfig[i]);
+			if ((numNeighsRefConfig[i] < domain->dimension + 2)
+					&& (mol[i] > 0)) { // cannot possibly invert shape matrix
+				printf(
+						"deleting particle [%d] because number of neighbors=%d is too small\n",
+						tag[i], numNeighsRefConfig[i]);
 				mol[i] = -1;
 			}
 
@@ -321,7 +336,8 @@ void PairTlsph::PreCompute() {
 				Matrix3d Mdiff = Fincr[i] * FincrInv[i] - eye;
 				if (Mdiff.norm() > 1.0e-10) {
 					printf("Inversion of F is inaccurate\n");
-					cout << "Here is the difference matrix to unity:" << endl << Mdiff << endl;
+					cout << "Here is the difference matrix to unity:" << endl
+							<< Mdiff << endl;
 				}
 
 //				if (tag[i] == 101) {
@@ -336,20 +352,26 @@ void PairTlsph::PreCompute() {
 				 */
 
 				if (detF[i] < DETF_MIN) {
-					printf("deleting particle [%d] because det(F)=%f is smaller than limit=%f\n", tag[i], Fincr[i].determinant(),
-					DETF_MIN);
+					printf(
+							"deleting particle [%d] because det(F)=%f is smaller than limit=%f\n",
+							tag[i], Fincr[i].determinant(),
+							DETF_MIN);
 					printf("nn = %d\n", numNeighsRefConfig[i]);
 					cout << "Here is matrix F:" << endl << Fincr[i] << endl;
-					cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
+					cout << "Here is matrix F-1:" << endl << FincrInv[i]
+							<< endl;
 					cout << "Here is matrix K-1:" << endl << K[i] << endl;
 					mol[i] = -1;
 					//error->one(FLERR, "");
 				} else if (detF[i] > DETF_MAX) {
-					printf("deleting particle [%d] because det(F)=%f is larger than limit=%f\n", tag[i], Fincr[i].determinant(),
-					DETF_MAX);
+					printf(
+							"deleting particle [%d] because det(F)=%f is larger than limit=%f\n",
+							tag[i], Fincr[i].determinant(),
+							DETF_MAX);
 					printf("nn = %d\n", numNeighsRefConfig[i]);
 					cout << "Here is matrix F:" << endl << Fincr[i] << endl;
-					cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
+					cout << "Here is matrix F-1:" << endl << FincrInv[i]
+							<< endl;
 					cout << "Here is matrix K-1:" << endl << K[i] << endl;
 					mol[i] = -1;
 					//error->one(FLERR, "");
@@ -361,7 +383,7 @@ void PairTlsph::PreCompute() {
 
 					// symmetric (D) and asymmetric (W) parts of L
 					D[i] = 0.5 * (L + L.transpose());
-					W[i] = 0.5 * (L - L.transpose());					// spin tensor:: need this for Jaumann rate
+					W[i] = 0.5 * (L - L.transpose()); // spin tensor:: need this for Jaumann rate
 
 					if (JAUMANN) {
 						d[i] = D[i];
@@ -477,16 +499,24 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	int nlocal = atom->nlocal;
 	int i, j, jj, jnum, itype, idim;
 	double r, hg_mag, wf, wfd, h, r0, r0Sq, voli, volj;
-	double delVdotDelR, visc_magnitude, deltaE, mu_ij, hg_err, gamma_dot_dx, delta;
+	double delVdotDelR, visc_magnitude, deltaE, mu_ij, hg_err, gamma_dot_dx,
+			delta;
 	char str[128];
-	Vector3d fi, fj, dx0, dx, dv, f_stress, f_hg, dxp_i, dxp_j, gamma, g, gamma_i, gamma_j, x0i, x0j;
+	Vector3d fi, fj, dx0, dx, dv, f_stress, f_hg, dxp_i, dxp_j, gamma, g,
+			gamma_i, gamma_j, x0i, x0j;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 
-	tagint **partner = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->partner;
-	int *npartner = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->npartner;
-	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
-	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
+	tagint **partner =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->partner;
+	int *npartner =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->npartner;
+	float **wfd_list =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
+	float **wf_list =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
+	float **degradation_ij =
+			((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -564,8 +594,15 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 
 			//barbara_kernel_and_derivative(h, r0, domain->dimension, wf, wfd);
 			//spiky_kernel_and_derivative(h, r0, wf, wfd);
-			wf = wf_list[i][jj];
-			wfd = wfd_list[i][jj];
+			//wf = wf_list[i][jj];
+			//wfd = wfd_list[i][jj];
+
+			// scale the interaction according to the damage variable
+			double scale = 1.0 - degradation_ij[i][jj];
+
+			wf = wf_list[i][jj] * scale;
+			wfd = wfd_list[i][jj] * scale;
+
 			g = (wfd / r0) * dx0; // uncorrected kernel gradient
 
 			/*
@@ -577,11 +614,15 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			 * artificial viscosity
 			 */
 			delVdotDelR = dx.dot(dv) / (r + 0.1 * h); // project relative velocity onto unit particle distance vector [m/s]
-			LimitDoubleMagnitude(delVdotDelR, 0.01 * Lookup[SIGNAL_VELOCITY][itype]);
+			LimitDoubleMagnitude(delVdotDelR,
+					0.01 * Lookup[SIGNAL_VELOCITY][itype]);
 			mu_ij = h * delVdotDelR / (r + 0.1 * h); // units: [m * m/s / m = m/s]
-			visc_magnitude = (-Lookup[VISCOSITY_Q1][itype] * Lookup[SIGNAL_VELOCITY][itype] * mu_ij
-					+ Lookup[VISCOSITY_Q2][itype] * mu_ij * mu_ij) / Lookup[REFERENCE_DENSITY][itype]; // units: m^5/(s^2 kg))
-			f_visc = rmass[i] * rmass[j] * visc_magnitude * wfd * dx / (r + 1.0e-2 * h); // units: kg^2 * m^5/(s^2 kg) * m^-4 = kg m / s^2 = N
+			visc_magnitude = (-Lookup[VISCOSITY_Q1][itype]
+					* Lookup[SIGNAL_VELOCITY][itype] * mu_ij
+					+ Lookup[VISCOSITY_Q2][itype] * mu_ij * mu_ij)
+					/ Lookup[REFERENCE_DENSITY][itype]; // units: m^5/(s^2 kg))
+			f_visc = rmass[i] * rmass[j] * visc_magnitude * wfd * dx
+					/ (r + 1.0e-2 * h); // units: kg^2 * m^5/(s^2 kg) * m^-4 = kg m / s^2 = N
 
 			/*
 			 * hourglass deviation of particles i and j
@@ -600,12 +641,15 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				delta = gamma.dot(dx);
 				if (delVdotDelR * delta < 0.0) {
 					hg_err = MAX(hg_err, 0.1); // limit hg_err to avoid numerical instabilities
-					hg_mag = -hg_err * Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] * Lookup[SIGNAL_VELOCITY][itype] * mu_ij
+					hg_mag = -hg_err
+							* Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype]
+							* Lookup[SIGNAL_VELOCITY][itype] * mu_ij
 							/ Lookup[REFERENCE_DENSITY][itype]; // this has units of pressure
 				} else {
 					hg_mag = 0.0;
 				}
-				f_hg = rmass[i] * rmass[j] * hg_mag * wfd * dx / (r + 1.0e-2 * h);
+				f_hg = rmass[i] * rmass[j] * hg_mag * wfd * dx
+						/ (r + 1.0e-2 * h);
 
 			} else {
 				/*
@@ -615,12 +659,13 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				gamma_dot_dx = gamma.dot(dx); // project hourglass error vector onto pair distance vector
 				LimitDoubleMagnitude(gamma_dot_dx, 0.1 * r); // limit projected vector to avoid numerical instabilities
 				delta = 0.5 * gamma_dot_dx / (r + 0.1 * h); // delta has dimensions of [m]
-				hg_mag = Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] * delta / (r0Sq + 0.01 * h * h); // hg_mag has dimensions [m^(-1)]
+				hg_mag = Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] * delta
+						/ (r0Sq + 0.01 * h * h); // hg_mag has dimensions [m^(-1)]
 				hg_mag *= -voli * volj * wf * Lookup[YOUNGS_MODULUS][itype]; // hg_mag has dimensions [J*m^(-1)] = [N]
 				f_hg = (hg_mag / (r + 0.01 * h)) * dx;
 			}
 
-			f_hg *= (1.0 - MAX(damage[i], damage[j])); // reduce hourglass force between damaged particles
+			//f_hg *= (1.0 - MAX(damage[i], damage[j])); // reduce hourglass force between damaged particles
 
 			// sum stress, viscous, and hourglass forces
 			sumForces = f_stress + f_visc + f_hg;
@@ -636,7 +681,8 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 
 			// tally atomistic stress tensor
 			if (evflag) {
-				ev_tally_xyz(i, j, nlocal, 0, 0.0, 0.0, sumForces(0), sumForces(1), sumForces(2), dx(0), dx(1), dx(2));
+				ev_tally_xyz(i, j, nlocal, 0, 0.0, 0.0, sumForces(0),
+						sumForces(1), sumForces(2), dx(0), dx(1), dx(2));
 			}
 
 			// check if a particle has moved too much w.r.t another particle
@@ -650,6 +696,18 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 						updateFlag = 1;
 					}
 				}
+			}
+
+			// update degradation
+			if (damage[i] * damage[j] > 0.0) {
+				if ((r - r0) / r0 > 0.5) {
+					degradation_ij[i][jj] += update->dt
+							* Lookup[SIGNAL_VELOCITY][itype] / (100.0 * h);
+				}
+			}
+
+			if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
+				partner[i][jj] = 0;
 			}
 		}
 	}
@@ -684,9 +742,12 @@ void PairTlsph::AssembleStress() {
 	int i, itype;
 	int nlocal = atom->nlocal;
 	double dt = update->dt;
-	double M_eff, p_wave_speed, mass_specific_energy, vol_specific_energy, rho, damage_increment;
-	Matrix3d sigma_rate, eye, sigmaInitial, sigmaFinal, T, Jaumann_rate, sigma_rate_check;
-	Matrix3d d_dev, sigmaInitial_dev, sigmaFinal_dev, sigma_dev_rate, strain, sigma_damaged;
+	double M_eff, p_wave_speed, mass_specific_energy, vol_specific_energy, rho,
+			damage_increment;
+	Matrix3d sigma_rate, eye, sigmaInitial, sigmaFinal, T, Jaumann_rate,
+			sigma_rate_check;
+	Matrix3d d_dev, sigmaInitial_dev, sigmaFinal_dev, sigma_dev_rate, strain,
+			sigma_damaged;
 	Vector3d x0i, xi, xp;
 
 	eye.setIdentity();
@@ -733,13 +794,19 @@ void PairTlsph::AssembleStress() {
 				 * material strength
 				 */
 
-				if (damage[i] < 1.0) {
-					ComputeStressDeviator(i, sigmaInitial_dev, d_dev, sigmaFinal_dev, sigma_dev_rate, plastic_strain_increment);
+				//if (damage[i] < 1.0) {
+				if (true) {
+					ComputeStressDeviator(i, sigmaInitial_dev, d_dev,
+							sigmaFinal_dev, sigma_dev_rate,
+							plastic_strain_increment);
 
 					eff_plastic_strain[i] += plastic_strain_increment;
 
-					eff_plastic_strain_rate[i] -= eff_plastic_strain_rate[i] / PLASTIC_STRAIN_AVERAGE_WINDOW;
-					eff_plastic_strain_rate[i] += (plastic_strain_increment / dt) / PLASTIC_STRAIN_AVERAGE_WINDOW;
+					eff_plastic_strain_rate[i] -= eff_plastic_strain_rate[i]
+							/ PLASTIC_STRAIN_AVERAGE_WINDOW;
+					eff_plastic_strain_rate[i] +=
+							(plastic_strain_increment / dt)
+									/ PLASTIC_STRAIN_AVERAGE_WINDOW;
 				} else {
 					sigmaFinal_dev.setZero(); // damage[i] >= 1, therefore it cannot carry shear stress
 					sigma_dev_rate.setZero();
@@ -754,112 +821,128 @@ void PairTlsph::AssembleStress() {
 				 *  Damage due to failure criteria.
 				 */
 
-				if (damage[i] < 1.0) {
+//				if (damage[i] < 1.0) {
+//
+//					ComputeDamage(i, strain, pFinal, sigmaFinal, sigmaFinal_dev,
+//							sigma_damaged, damage_increment);
+//
+//					damage[i] += damage_increment;
+//					damage[i] = MIN(damage[i], 1.0);
+//
+//				} // end if damage[i] < 1.0
+				ComputeDamage(i, strain, pFinal, sigmaFinal, sigmaFinal_dev,
+						sigma_damaged, damage_increment);
 
-					ComputeDamage(i, strain, pFinal, sigmaFinal, sigmaFinal_dev, sigma_damaged, damage_increment);
-
-					damage[i] += damage_increment;
-					damage[i] = MIN(damage[i], 1.0);
-
-				} // end if damage[i] < 1.0
-
-				/*
-				 * Apply damage
-				 */
-
-				if (pFinal < 0.0) { // compression: particle can carry compressive load but reduced shear
-					sigma_damaged = pFinal * eye + (1.0 - damage[i]) * sigmaFinal_dev;
-				} else { // tension: particle has reduced tensile and shear load bearing capability
-					sigma_damaged = (1.0 - damage[i]) * (pFinal * eye + sigmaFinal_dev);
-				}
-
-				if (JAUMANN) {
-					/*
-					 * sigma is already the co-rotated Cauchy stress.
-					 * The stress rate, however, needs to be made objective.
-					 */
-
-					if (dt > 1.0e-16) {
-						sigma_rate = (1.0 / dt) * (sigmaFinal - sigmaInitial);
-					} else {
-						sigma_rate.setZero();
-					}
-
-					Jaumann_rate = sigma_rate + W[i] * sigmaInitial + sigmaInitial * W[i].transpose();
-					sigmaFinal = sigmaInitial + dt * Jaumann_rate;
-					T = sigmaFinal;
+				if (damage_increment > 0.0) {
+					damage[i] = 1.0;
 				} else {
-					/*
-					 * sigma is the unrotated stress.
-					 * need to do forward rotation of the unrotated stress sigma to the current configuration
-					 */
-					T = R[i] * sigma_damaged * R[i].transpose();
+					damage[i] = 0.0;
 				}
 
+			} // end if damage[i] < 1.0
+
+			/*
+			 * Apply damage
+			 */
+
+//			if (pFinal < 0.0) { // compression: particle can carry compressive load but reduced shear
+//				sigma_damaged = pFinal * eye
+//						+ (1.0 - damage[i]) * sigmaFinal_dev;
+//			} else { // tension: particle has reduced tensile and shear load bearing capability
+//				sigma_damaged = (1.0 - damage[i])
+//						* (pFinal * eye + sigmaFinal_dev);
+//			}
+			sigma_damaged = sigmaFinal;
+
+			if (JAUMANN) {
 				/*
-				 * store unrotated stress in atom vector
-				 * symmetry is exploited
-				 */
-				tlsph_stress[i][0] = sigmaFinal(0, 0);
-				tlsph_stress[i][1] = sigmaFinal(0, 1);
-				tlsph_stress[i][2] = sigmaFinal(0, 2);
-				tlsph_stress[i][3] = sigmaFinal(1, 1);
-				tlsph_stress[i][4] = sigmaFinal(1, 2);
-				tlsph_stress[i][5] = sigmaFinal(2, 2);
-
-				// store rotated, "true" Cauchy stress
-				CauchyStress[i] = T;
-
-				/*
-				 * We have the corotational Cauchy stress.
-				 * Convert to PK1. Note that reference configuration used for computing the forces is linked via
-				 * the incremental deformation gradient, not the full deformation gradient.
-				 */
-				PK1[i] = detF[i] * T * FincrInv[i].transpose();
-
-				/*
-				 * pre-multiply stress tensor with shape matrix to save computation in force loop
-				 */
-				PK1[i] = PK1[i] * K[i];
-
-				//cout << "F:" << Fincr[i] << endl;
-				//cout << "T:" << T << endl;
-				//cout << "PK1:" << PK1[i] << endl << endl;
-
-				/*
-				 * compute stable time step according to Pronto 2d
+				 * sigma is already the co-rotated Cauchy stress.
+				 * The stress rate, however, needs to be made objective.
 				 */
 
-				Matrix3d deltaSigma;
-				deltaSigma = sigma_damaged - sigmaInitial;
-				p_rate = deltaSigma.trace() / (3.0 * dt);
-				sigma_dev_rate = Deviator(deltaSigma) / dt;
+				if (dt > 1.0e-16) {
+					sigma_rate = (1.0 / dt) * (sigmaFinal - sigmaInitial);
+				} else {
+					sigma_rate.setZero();
+				}
 
-				double K_eff, mu_eff;
-				effective_longitudinal_modulus(itype, dt, d_iso, p_rate, d_dev, sigma_dev_rate, damage[i], K_eff, mu_eff, M_eff);
-				p_wave_speed = sqrt(M_eff / rho);
-				dtCFL = MIN(dtCFL, 2.0 * radius[i] / p_wave_speed);
-
-				//dtCFL = MIN(dtCFL, radius[i] / p_wave_speed);
-
-			} else { // end if delete_flag == 0
-				PK1[i].setZero();
-				K[i].setIdentity();
-				CauchyStress[i].setZero();
-
-				sigma_rate.setZero();
-				tlsph_stress[i][0] = 0.0;
-				tlsph_stress[i][1] = 0.0;
-				tlsph_stress[i][2] = 0.0;
-				tlsph_stress[i][3] = 0.0;
-				tlsph_stress[i][4] = 0.0;
-				tlsph_stress[i][5] = 0.0;
+				Jaumann_rate = sigma_rate + W[i] * sigmaInitial
+						+ sigmaInitial * W[i].transpose();
+				sigmaFinal = sigmaInitial + dt * Jaumann_rate;
+				T = sigmaFinal;
+			} else {
+				/*
+				 * sigma is the unrotated stress.
+				 * need to do forward rotation of the unrotated stress sigma to the current configuration
+				 */
+				T = R[i] * sigma_damaged * R[i].transpose();
 			}
 
-		} else { // setflag[i] is not checked
+			/*
+			 * store unrotated stress in atom vector
+			 * symmetry is exploited
+			 */
+//				tlsph_stress[i][0] = sigmaFinal(0, 0);
+//				tlsph_stress[i][1] = sigmaFinal(0, 1);
+//				tlsph_stress[i][2] = sigmaFinal(0, 2);
+//				tlsph_stress[i][3] = sigmaFinal(1, 1);
+//				tlsph_stress[i][4] = sigmaFinal(1, 2);
+//				tlsph_stress[i][5] = sigmaFinal(2, 2);
+			tlsph_stress[i][0] = sigma_damaged(0, 0);
+			tlsph_stress[i][1] = sigma_damaged(0, 1);
+			tlsph_stress[i][2] = sigma_damaged(0, 2);
+			tlsph_stress[i][3] = sigma_damaged(1, 1);
+			tlsph_stress[i][4] = sigma_damaged(1, 2);
+			tlsph_stress[i][5] = sigma_damaged(2, 2);
+
+			// store rotated, "true" Cauchy stress
+			CauchyStress[i] = T;
+
+			/*
+			 * We have the corotational Cauchy stress.
+			 * Convert to PK1. Note that reference configuration used for computing the forces is linked via
+			 * the incremental deformation gradient, not the full deformation gradient.
+			 */
+			PK1[i] = detF[i] * T * FincrInv[i].transpose();
+
+			/*
+			 * pre-multiply stress tensor with shape matrix to save computation in force loop
+			 */
+			PK1[i] = PK1[i] * K[i];
+
+			//cout << "F:" << Fincr[i] << endl;
+			//cout << "T:" << T << endl;
+			//cout << "PK1:" << PK1[i] << endl << endl;
+
+			/*
+			 * compute stable time step according to Pronto 2d
+			 */
+
+			Matrix3d deltaSigma;
+			deltaSigma = sigma_damaged - sigmaInitial;
+			p_rate = deltaSigma.trace() / (3.0 * dt);
+			sigma_dev_rate = Deviator(deltaSigma) / dt;
+
+			double K_eff, mu_eff;
+			effective_longitudinal_modulus(itype, dt, d_iso, p_rate, d_dev,
+					sigma_dev_rate, damage[i], K_eff, mu_eff, M_eff);
+			p_wave_speed = sqrt(M_eff / rho);
+			dtCFL = MIN(dtCFL, 2.0 * radius[i] / p_wave_speed);
+
+			//dtCFL = MIN(dtCFL, radius[i] / p_wave_speed);
+
+		} else { // end if delete_flag == 0
 			PK1[i].setZero();
 			K[i].setIdentity();
 			CauchyStress[i].setZero();
+
+			sigma_rate.setZero();
+			tlsph_stress[i][0] = 0.0;
+			tlsph_stress[i][1] = 0.0;
+			tlsph_stress[i][2] = 0.0;
+			tlsph_stress[i][3] = 0.0;
+			tlsph_stress[i][4] = 0.0;
+			tlsph_stress[i][5] = 0.0;
 		}
 	}
 }
@@ -879,6 +962,7 @@ void PairTlsph::allocate() {
 
 	memory->create(strengthModel, n + 1, "pair:strengthmodel");
 	memory->create(eos, n + 1, "pair:eosmodel");
+	memory->create(failureModel, n + 1, "pair:failuremodel");
 	memory->create(Lookup, MAX_KEY_VALUE, n + 1, "pair:LookupTable");
 
 	memory->create(cutsq, n + 1, n + 1, "pair:cutsq"); // always needs to be allocated, even with granular neighborlist
@@ -923,7 +1007,8 @@ void PairTlsph::settings(int narg, char **arg) {
 		if (strcmp(arg[iarg], "*UPDATE_CONSTANT") == 0) {
 			iarg++;
 			if (iarg == narg) {
-				error->all(FLERR, "expected number following *UPDATE_CONSTANT keyword");
+				error->all(FLERR,
+						"expected number following *UPDATE_CONSTANT keyword");
 			}
 
 			update_method = UPDATE_CONSTANT_THRESHOLD;
@@ -932,7 +1017,8 @@ void PairTlsph::settings(int narg, char **arg) {
 		} else if (strcmp(arg[iarg], "*UPDATE_PAIRWISE") == 0) {
 			iarg++;
 			if (iarg == narg) {
-				error->all(FLERR, "expected number following *UPDATE_PAIRWISE keyword");
+				error->all(FLERR,
+						"expected number following *UPDATE_PAIRWISE keyword");
 			}
 
 			update_method = UPDATE_PAIRWISE_RATIO;
@@ -940,18 +1026,23 @@ void PairTlsph::settings(int narg, char **arg) {
 
 		} else {
 			char msg[128];
-			sprintf(msg, "Illegal keyword for smd/integrate_tlsph: %s\n", arg[iarg]);
+			sprintf(msg, "Illegal keyword for smd/integrate_tlsph: %s\n",
+					arg[iarg]);
 			error->all(FLERR, msg);
 		}
 
 		iarg++;
 	}
 
-	if ((update_threshold > cut_comm) && (update_method == UPDATE_CONSTANT_THRESHOLD)) {
+	if ((update_threshold > cut_comm)
+			&& (update_method == UPDATE_CONSTANT_THRESHOLD)) {
 		if (comm->me == 0) {
 			printf("\n                ***** WARNING ***\n");
-			printf("requested reference configuration update threshold is %g length units\n", update_threshold);
-			printf("This value exceeds the maximum value %g beyond which TLSPH displacements can be tracked at current settings.\n",
+			printf(
+					"requested reference configuration update threshold is %g length units\n",
+					update_threshold);
+			printf(
+					"This value exceeds the maximum value %g beyond which TLSPH displacements can be tracked at current settings.\n",
 					cut_comm);
 			printf("Expect loss of neighbors!\n");
 		}
@@ -960,10 +1051,12 @@ void PairTlsph::settings(int narg, char **arg) {
 	if (comm->me == 0) {
 
 		if (update_method == UPDATE_CONSTANT_THRESHOLD) {
-			printf("... will update reference configuration if magnitude of relative displacement exceeds %g length units\n",
+			printf(
+					"... will update reference configuration if magnitude of relative displacement exceeds %g length units\n",
 					update_threshold);
 		} else if (update_method == UPDATE_PAIRWISE_RATIO) {
-			printf("... will update reference configuration if ratio pairwise distance / smoothing length  exceeds %g\n",
+			printf(
+					"... will update reference configuration if ratio pairwise distance / smoothing length  exceeds %g\n",
 					update_threshold);
 		} else if (update_method == UPDATE_NONE) {
 			printf("... will never update reference configuration");
@@ -995,10 +1088,16 @@ void PairTlsph::coeff(int narg, char **arg) {
 	 * check that TLSPH parameters are given only in i,i form
 	 */
 	if (force->inumeric(FLERR, arg[0]) != force->inumeric(FLERR, arg[1])) {
-		sprintf(str, "TLSPH coefficients can only be specified between particles of same type!");
+		sprintf(str,
+				"TLSPH coefficients can only be specified between particles of same type!");
 		error->all(FLERR, str);
 	}
 	itype = force->inumeric(FLERR, arg[0]);
+
+	// set all eos, strength and failure models to inactive by default
+	eos[itype] = EOS_NONE;
+	strengthModel[itype] = STRENGTH_NONE;
+	failureModel[itype] = FAILURE_NONE;
 
 	if (comm->me == 0) {
 		printf(
@@ -1026,7 +1125,7 @@ void PairTlsph::coeff(int narg, char **arg) {
 		}
 	}
 
-	//printf("keyword following *COMMON is %s\n", arg[iNextKwd]);
+//printf("keyword following *COMMON is %s\n", arg[iNextKwd]);
 
 	if (iNextKwd < 0) {
 		sprintf(str, "no *KEYWORD terminates *COMMON");
@@ -1034,7 +1133,8 @@ void PairTlsph::coeff(int narg, char **arg) {
 	}
 
 	if (iNextKwd - ioffset != 7 + 1) {
-		sprintf(str, "expected 7 arguments following *COMMON but got %d\n", iNextKwd - ioffset - 1);
+		sprintf(str, "expected 7 arguments following *COMMON but got %d\n",
+				iNextKwd - ioffset - 1);
 		error->all(FLERR, str);
 	}
 
@@ -1043,30 +1143,47 @@ void PairTlsph::coeff(int narg, char **arg) {
 	Lookup[POISSON_RATIO][itype] = force->numeric(FLERR, arg[ioffset + 3]);
 	Lookup[VISCOSITY_Q1][itype] = force->numeric(FLERR, arg[ioffset + 4]);
 	Lookup[VISCOSITY_Q2][itype] = force->numeric(FLERR, arg[ioffset + 5]);
-	Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] = force->numeric(FLERR, arg[ioffset + 6]);
+	Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] = force->numeric(FLERR,
+			arg[ioffset + 6]);
 	Lookup[HEAT_CAPACITY][itype] = force->numeric(FLERR, arg[ioffset + 7]);
 
-	Lookup[LAME_LAMBDA][itype] = Lookup[YOUNGS_MODULUS][itype] * Lookup[POISSON_RATIO][itype]
-			/ ((1.0 + Lookup[POISSON_RATIO][itype] * (1.0 - 2.0 * Lookup[POISSON_RATIO][itype])));
-	Lookup[SHEAR_MODULUS][itype] = Lookup[YOUNGS_MODULUS][itype] / (2.0 * (1.0 + Lookup[POISSON_RATIO][itype]));
-	Lookup[M_MODULUS][itype] = Lookup[LAME_LAMBDA][itype] + 2.0 * Lookup[SHEAR_MODULUS][itype];
+	Lookup[LAME_LAMBDA][itype] = Lookup[YOUNGS_MODULUS][itype]
+			* Lookup[POISSON_RATIO][itype]
+			/ ((1.0
+					+ Lookup[POISSON_RATIO][itype]
+							* (1.0 - 2.0 * Lookup[POISSON_RATIO][itype])));
+	Lookup[SHEAR_MODULUS][itype] = Lookup[YOUNGS_MODULUS][itype]
+			/ (2.0 * (1.0 + Lookup[POISSON_RATIO][itype]));
+	Lookup[M_MODULUS][itype] = Lookup[LAME_LAMBDA][itype]
+			+ 2.0 * Lookup[SHEAR_MODULUS][itype];
 	Lookup[SIGNAL_VELOCITY][itype] = sqrt(
-			(Lookup[LAME_LAMBDA][itype] + 2.0 * Lookup[SHEAR_MODULUS][itype]) / Lookup[REFERENCE_DENSITY][itype]);
-	Lookup[BULK_MODULUS][itype] = Lookup[LAME_LAMBDA][itype] + 2.0 * Lookup[SHEAR_MODULUS][itype] / 3.0;
+			(Lookup[LAME_LAMBDA][itype] + 2.0 * Lookup[SHEAR_MODULUS][itype])
+					/ Lookup[REFERENCE_DENSITY][itype]);
+	Lookup[BULK_MODULUS][itype] = Lookup[LAME_LAMBDA][itype]
+			+ 2.0 * Lookup[SHEAR_MODULUS][itype] / 3.0;
 
 	if (comm->me == 0) {
-		printf("\n material unspecific properties for SMD/TLSPH definition of particle type %d:\n", itype);
-		printf("%60s : %g\n", "reference density", Lookup[REFERENCE_DENSITY][itype]);
+		printf(
+				"\n material unspecific properties for SMD/TLSPH definition of particle type %d:\n",
+				itype);
+		printf("%60s : %g\n", "reference density",
+				Lookup[REFERENCE_DENSITY][itype]);
 		printf("%60s : %g\n", "Young's modulus", Lookup[YOUNGS_MODULUS][itype]);
 		printf("%60s : %g\n", "Poisson ratio", Lookup[POISSON_RATIO][itype]);
-		printf("%60s : %g\n", "linear viscosity coefficient", Lookup[VISCOSITY_Q1][itype]);
-		printf("%60s : %g\n", "quadratic viscosity coefficient", Lookup[VISCOSITY_Q2][itype]);
-		printf("%60s : %g\n", "hourglass control coefficient", Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype]);
-		printf("%60s : %g\n", "heat capacity [energy / (mass * temperature)]", Lookup[HEAT_CAPACITY][itype]);
-		printf("%60s : %g\n", "Lame constant lambda", Lookup[LAME_LAMBDA][itype]);
+		printf("%60s : %g\n", "linear viscosity coefficient",
+				Lookup[VISCOSITY_Q1][itype]);
+		printf("%60s : %g\n", "quadratic viscosity coefficient",
+				Lookup[VISCOSITY_Q2][itype]);
+		printf("%60s : %g\n", "hourglass control coefficient",
+				Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype]);
+		printf("%60s : %g\n", "heat capacity [energy / (mass * temperature)]",
+				Lookup[HEAT_CAPACITY][itype]);
+		printf("%60s : %g\n", "Lame constant lambda",
+				Lookup[LAME_LAMBDA][itype]);
 		printf("%60s : %g\n", "shear modulus", Lookup[SHEAR_MODULUS][itype]);
 		printf("%60s : %g\n", "bulk modulus", Lookup[BULK_MODULUS][itype]);
-		printf("%60s : %g\n", "signal velocity", Lookup[SIGNAL_VELOCITY][itype]);
+		printf("%60s : %g\n", "signal velocity",
+				Lookup[SIGNAL_VELOCITY][itype]);
 
 	}
 
@@ -1074,7 +1191,7 @@ void PairTlsph::coeff(int narg, char **arg) {
 	 * read following material cards
 	 */
 
-	//printf("next kwd is %s\n", arg[iNextKwd]);
+//printf("next kwd is %s\n", arg[iNextKwd]);
 	eos[itype] = EOS_NONE;
 	strengthModel[itype] = STRENGTH_NONE;
 
@@ -1115,12 +1232,15 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 1) {
-				sprintf(str, "expected 0 arguments following *LINEAR_DEFGRAD but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 0 arguments following *LINEAR_DEFGRAD but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
 			if (comm->me == 0) {
-				printf("\n%60s\n", "Linear Elasticity model based on deformation gradient");
+				printf("\n%60s\n",
+						"Linear Elasticity model based on deformation gradient");
 			}
 		} else if (strcmp(arg[ioffset], "*LINEAR_STRENGTH") == 0) {
 
@@ -1149,12 +1269,15 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 1) {
-				sprintf(str, "expected 0 arguments following *LINEAR_STRENGTH but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 0 arguments following *LINEAR_STRENGTH but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
 			if (comm->me == 0) {
-				printf("%60s\n", "Linear Elasticity strength based on strain rate");
+				printf("%60s\n",
+						"Linear Elasticity strength based on strain rate");
 			}
 		} // end Linear Elasticity strength only model based on strain rate
 
@@ -1185,20 +1308,30 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 2 + 1) {
-				sprintf(str, "expected 2 arguments following *LINEAR_PLASTICITY but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 2 arguments following *LINEAR_PLASTICITY but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			Lookup[YIELD_STRESS][itype] = force->numeric(FLERR, arg[ioffset + 1]);
-			Lookup[HARDENING_PARAMETER][itype] = force->numeric(FLERR, arg[ioffset + 2]);
+			Lookup[YIELD_STRESS][itype] = force->numeric(FLERR,
+					arg[ioffset + 1]);
+			Lookup[HARDENING_PARAMETER][itype] = force->numeric(FLERR,
+					arg[ioffset + 2]);
 
 			if (comm->me == 0) {
-				printf("%60s\n", "Linear elastic / perfectly plastic strength based on strain rate");
-				printf("%60s : %g\n", "Young's modulus", Lookup[YOUNGS_MODULUS][itype]);
-				printf("%60s : %g\n", "Poisson ratio", Lookup[POISSON_RATIO][itype]);
-				printf("%60s : %g\n", "shear modulus", Lookup[SHEAR_MODULUS][itype]);
-				printf("%60s : %g\n", "constant yield stress", Lookup[YIELD_STRESS][itype]);
-				printf("%60s : %g\n", "constant hardening parameter", Lookup[HARDENING_PARAMETER][itype]);
+				printf("%60s\n",
+						"Linear elastic / perfectly plastic strength based on strain rate");
+				printf("%60s : %g\n", "Young's modulus",
+						Lookup[YOUNGS_MODULUS][itype]);
+				printf("%60s : %g\n", "Poisson ratio",
+						Lookup[POISSON_RATIO][itype]);
+				printf("%60s : %g\n", "shear modulus",
+						Lookup[SHEAR_MODULUS][itype]);
+				printf("%60s : %g\n", "constant yield stress",
+						Lookup[YIELD_STRESS][itype]);
+				printf("%60s : %g\n", "constant hardening parameter",
+						Lookup[HARDENING_PARAMETER][itype]);
 			}
 		} // end Linear Elastic / perfectly plastic strength only model based on strain rate
 
@@ -1229,7 +1362,9 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 8 + 1) {
-				sprintf(str, "expected 8 arguments following *JOHNSON_COOK but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 8 arguments following *JOHNSON_COOK but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
@@ -1244,16 +1379,26 @@ void PairTlsph::coeff(int narg, char **arg) {
 
 			if (comm->me == 0) {
 				printf("%60s\n", "Johnson Cook material strength model");
-				printf("%60s : %g\n", "A: initial yield stress", Lookup[JC_A][itype]);
-				printf("%60s : %g\n", "B : proportionality factor for plastic strain dependency", Lookup[JC_B][itype]);
-				printf("%60s : %g\n", "a : exponent for plastic strain dependency", Lookup[JC_a][itype]);
-				printf("%60s : %g\n", "C : proportionality factor for logarithmic plastic strain rate dependency",
+				printf("%60s : %g\n", "A: initial yield stress",
+						Lookup[JC_A][itype]);
+				printf("%60s : %g\n",
+						"B : proportionality factor for plastic strain dependency",
+						Lookup[JC_B][itype]);
+				printf("%60s : %g\n",
+						"a : exponent for plastic strain dependency",
+						Lookup[JC_a][itype]);
+				printf("%60s : %g\n",
+						"C : proportionality factor for logarithmic plastic strain rate dependency",
 						Lookup[JC_C][itype]);
-				printf("%60s : %g\n", "epdot0 : dimensionality factor for plastic strain rate dependency",
+				printf("%60s : %g\n",
+						"epdot0 : dimensionality factor for plastic strain rate dependency",
 						Lookup[JC_epdot0][itype]);
-				printf("%60s : %g\n", "T0 : reference (room) temperature", Lookup[JC_T0][itype]);
-				printf("%60s : %g\n", "Tmelt : melting temperature", Lookup[JC_Tmelt][itype]);
-				printf("%60s : %g\n", "M : exponent for temperature dependency", Lookup[JC_M][itype]);
+				printf("%60s : %g\n", "T0 : reference (room) temperature",
+						Lookup[JC_T0][itype]);
+				printf("%60s : %g\n", "Tmelt : melting temperature",
+						Lookup[JC_Tmelt][itype]);
+				printf("%60s : %g\n", "M : exponent for temperature dependency",
+						Lookup[JC_M][itype]);
 			}
 
 		} else if (strcmp(arg[ioffset], "*EOS_NONE") == 0) {
@@ -1283,7 +1428,9 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 1) {
-				sprintf(str, "expected 0 arguments following *EOS_NONE but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 0 arguments following *EOS_NONE but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
@@ -1318,13 +1465,16 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 1) {
-				sprintf(str, "expected 0 arguments following *EOS_LINEAR but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 0 arguments following *EOS_LINEAR but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
 			if (comm->me == 0) {
 				printf("\n%60s\n", "linear EOS based on strain rate");
-				printf("%60s : %g\n", "bulk modulus", Lookup[BULK_MODULUS][itype]);
+				printf("%60s : %g\n", "bulk modulus",
+						Lookup[BULK_MODULUS][itype]);
 			}
 		} // end linear eos
 		else if (strcmp(arg[ioffset], "*EOS_SHOCK") == 0) {
@@ -1354,18 +1504,26 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 3 + 1) {
-				sprintf(str, "expected 3 arguments following *EOS_SHOCK but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 3 arguments following *EOS_SHOCK but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			Lookup[EOS_SHOCK_C0][itype] = force->numeric(FLERR, arg[ioffset + 1]);
-			Lookup[EOS_SHOCK_S][itype] = force->numeric(FLERR, arg[ioffset + 2]);
-			Lookup[EOS_SHOCK_GAMMA][itype] = force->numeric(FLERR, arg[ioffset + 3]);
+			Lookup[EOS_SHOCK_C0][itype] = force->numeric(FLERR,
+					arg[ioffset + 1]);
+			Lookup[EOS_SHOCK_S][itype] = force->numeric(FLERR,
+					arg[ioffset + 2]);
+			Lookup[EOS_SHOCK_GAMMA][itype] = force->numeric(FLERR,
+					arg[ioffset + 3]);
 			if (comm->me == 0) {
 				printf("\n%60s\n", "shock EOS based on strain rate");
-				printf("%60s : %g\n", "reference speed of sound", Lookup[EOS_SHOCK_C0][itype]);
-				printf("%60s : %g\n", "Hugoniot parameter S", Lookup[EOS_SHOCK_S][itype]);
-				printf("%60s : %g\n", "Grueneisen Gamma", Lookup[EOS_SHOCK_GAMMA][itype]);
+				printf("%60s : %g\n", "reference speed of sound",
+						Lookup[EOS_SHOCK_C0][itype]);
+				printf("%60s : %g\n", "Hugoniot parameter S",
+						Lookup[EOS_SHOCK_S][itype]);
+				printf("%60s : %g\n", "Grueneisen Gamma",
+						Lookup[EOS_SHOCK_GAMMA][itype]);
 			}
 		} // end shock eos
 
@@ -1395,26 +1553,49 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 7 + 1) {
-				sprintf(str, "expected 7 arguments following *EOS_POLYNOMIAL but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 7 arguments following *EOS_POLYNOMIAL but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			matProp2[std::make_pair("eos_polynomial_c0", itype)] = force->numeric(FLERR, arg[ioffset + 1]);
-			matProp2[std::make_pair("eos_polynomial_c1", itype)] = force->numeric(FLERR, arg[ioffset + 2]);
-			matProp2[std::make_pair("eos_polynomial_c2", itype)] = force->numeric(FLERR, arg[ioffset + 3]);
-			matProp2[std::make_pair("eos_polynomial_c3", itype)] = force->numeric(FLERR, arg[ioffset + 4]);
-			matProp2[std::make_pair("eos_polynomial_c4", itype)] = force->numeric(FLERR, arg[ioffset + 5]);
-			matProp2[std::make_pair("eos_polynomial_c5", itype)] = force->numeric(FLERR, arg[ioffset + 6]);
-			matProp2[std::make_pair("eos_polynomial_c6", itype)] = force->numeric(FLERR, arg[ioffset + 7]);
+			matProp2[std::make_pair("eos_polynomial_c0", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 1]);
+			matProp2[std::make_pair("eos_polynomial_c1", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 2]);
+			matProp2[std::make_pair("eos_polynomial_c2", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 3]);
+			matProp2[std::make_pair("eos_polynomial_c3", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 4]);
+			matProp2[std::make_pair("eos_polynomial_c4", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 5]);
+			matProp2[std::make_pair("eos_polynomial_c5", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 6]);
+			matProp2[std::make_pair("eos_polynomial_c6", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 7]);
 			if (comm->me == 0) {
 				printf("\n%60s\n", "polynomial EOS based on strain rate");
-				printf("%60s : %g\n", "parameter c0", SafeLookup("eos_polynomial_c0", itype));
-				printf("%60s : %g\n", "parameter c1", SafeLookup("eos_polynomial_c1", itype));
-				printf("%60s : %g\n", "parameter c2", SafeLookup("eos_polynomial_c2", itype));
-				printf("%60s : %g\n", "parameter c3", SafeLookup("eos_polynomial_c3", itype));
-				printf("%60s : %g\n", "parameter c4", SafeLookup("eos_polynomial_c4", itype));
-				printf("%60s : %g\n", "parameter c5", SafeLookup("eos_polynomial_c5", itype));
-				printf("%60s : %g\n", "parameter c6", SafeLookup("eos_polynomial_c6", itype));
+				printf("%60s : %g\n", "parameter c0",
+						SafeLookup("eos_polynomial_c0", itype));
+				printf("%60s : %g\n", "parameter c1",
+						SafeLookup("eos_polynomial_c1", itype));
+				printf("%60s : %g\n", "parameter c2",
+						SafeLookup("eos_polynomial_c2", itype));
+				printf("%60s : %g\n", "parameter c3",
+						SafeLookup("eos_polynomial_c3", itype));
+				printf("%60s : %g\n", "parameter c4",
+						SafeLookup("eos_polynomial_c4", itype));
+				printf("%60s : %g\n", "parameter c5",
+						SafeLookup("eos_polynomial_c5", itype));
+				printf("%60s : %g\n", "parameter c6",
+						SafeLookup("eos_polynomial_c6", itype));
 			}
 		} // end polynomial eos
 
@@ -1439,20 +1620,27 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd < 0) {
-				sprintf(str, "no *KEYWORD terminates *FAILURE_MAX_PLASTIC_STRAIN");
+				sprintf(str,
+						"no *KEYWORD terminates *FAILURE_MAX_PLASTIC_STRAIN");
 				error->all(FLERR, str);
 			}
 
 			if (iNextKwd - ioffset != 1 + 1) {
-				sprintf(str, "expected 1 arguments following *FAILURE_MAX_PLASTIC_STRAIN but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 1 arguments following *FAILURE_MAX_PLASTIC_STRAIN but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype] = force->numeric(FLERR, arg[ioffset + 1]);
+			failureModel[itype] = FAILURE_MAX_PLASTIC_STRAIN;
+			Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype] =
+					force->numeric(
+					FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
 				printf("\n%60s\n", "maximum plastic strain failure criterion");
-				printf("%60s : %g\n", "failure occurs when plastic strain reaches limit",
+				printf("%60s : %g\n",
+						"failure occurs when plastic strain reaches limit",
 						Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]);
 			}
 		} // end maximum plastic strain failure criterion
@@ -1476,21 +1664,29 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd < 0) {
-				sprintf(str, "no *KEYWORD terminates *FAILURE_MAX_PRINCIPAL_STRAIN");
+				sprintf(str,
+						"no *KEYWORD terminates *FAILURE_MAX_PRINCIPAL_STRAIN");
 				error->all(FLERR, str);
 			}
 
 			if (iNextKwd - ioffset != 1 + 1) {
-				sprintf(str, "expected 1 arguments following *FAILURE_MAX_PRINCIPAL_STRAIN but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 1 arguments following *FAILURE_MAX_PRINCIPAL_STRAIN but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			matProp2[std::make_pair("failure_max_principal_strain", itype)] = force->numeric(FLERR, arg[ioffset + 1]);
+			failureModel[itype] = FAILURE_MAX_PRINCIPAL_STRAIN;
+			Lookup[FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD][itype] =
+					force->numeric(
+					FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
-				printf("\n%60s\n", "maximum principal strain failure criterion");
-				printf("%60s : %g\n", "failure occurs when principal strain reaches limit",
-						SafeLookup("failure_max_principal_strain", itype));
+				printf("\n%60s\n",
+						"maximum principal strain failure criterion");
+				printf("%60s : %g\n",
+						"failure occurs when principal strain reaches limit",
+						Lookup[FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD][itype]);
 			}
 		} // end maximum principal strain failure criterion
 		else if (strcmp(arg[ioffset], "*FAILURE_JOHNSON_COOK") == 0) {
@@ -1515,23 +1711,36 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd - ioffset != 5 + 1) {
-				sprintf(str, "expected 5 arguments following *FAILURE_JOHNSON_COOK but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 5 arguments following *FAILURE_JOHNSON_COOK but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			matProp2[std::make_pair("failure_JC_d1", itype)] = force->numeric(FLERR, arg[ioffset + 1]);
-			matProp2[std::make_pair("failure_JC_d2", itype)] = force->numeric(FLERR, arg[ioffset + 2]);
-			matProp2[std::make_pair("failure_JC_d3", itype)] = force->numeric(FLERR, arg[ioffset + 3]);
-			matProp2[std::make_pair("failure_JC_d4", itype)] = force->numeric(FLERR, arg[ioffset + 4]);
-			matProp2[std::make_pair("failure_JC_epdot0", itype)] = force->numeric(FLERR, arg[ioffset + 5]);
+			matProp2[std::make_pair("failure_JC_d1", itype)] = force->numeric(
+			FLERR, arg[ioffset + 1]);
+			matProp2[std::make_pair("failure_JC_d2", itype)] = force->numeric(
+			FLERR, arg[ioffset + 2]);
+			matProp2[std::make_pair("failure_JC_d3", itype)] = force->numeric(
+			FLERR, arg[ioffset + 3]);
+			matProp2[std::make_pair("failure_JC_d4", itype)] = force->numeric(
+			FLERR, arg[ioffset + 4]);
+			matProp2[std::make_pair("failure_JC_epdot0", itype)] =
+					force->numeric(
+					FLERR, arg[ioffset + 5]);
 
 			if (comm->me == 0) {
 				printf("\n%60s\n", "Johnson-Cook failure criterion");
-				printf("%60s : %g\n", "parameter d1", SafeLookup("failure_JC_d1", itype));
-				printf("%60s : %g\n", "parameter d2", SafeLookup("failure_JC_d2", itype));
-				printf("%60s : %g\n", "parameter d3", SafeLookup("failure_JC_d3", itype));
-				printf("%60s : %g\n", "parameter d4", SafeLookup("failure_JC_d4", itype));
-				printf("%60s : %g\n", "reference plastic strain rate", SafeLookup("failure_JC_epdot0", itype));
+				printf("%60s : %g\n", "parameter d1",
+						SafeLookup("failure_JC_d1", itype));
+				printf("%60s : %g\n", "parameter d2",
+						SafeLookup("failure_JC_d2", itype));
+				printf("%60s : %g\n", "parameter d3",
+						SafeLookup("failure_JC_d3", itype));
+				printf("%60s : %g\n", "parameter d4",
+						SafeLookup("failure_JC_d4", itype));
+				printf("%60s : %g\n", "reference plastic strain rate",
+						SafeLookup("failure_JC_epdot0", itype));
 			}
 
 		} else if (strcmp(arg[ioffset], "*FAILURE_MAX_PRINCIPAL_STRESS") == 0) {
@@ -1555,21 +1764,29 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd < 0) {
-				sprintf(str, "no *KEYWORD terminates *FAILURE_MAX_PRINCIPAL_STRESS");
+				sprintf(str,
+						"no *KEYWORD terminates *FAILURE_MAX_PRINCIPAL_STRESS");
 				error->all(FLERR, str);
 			}
 
 			if (iNextKwd - ioffset != 1 + 1) {
-				sprintf(str, "expected 1 arguments following *FAILURE_MAX_PRINCIPAL_STRESS but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str,
+						"expected 1 arguments following *FAILURE_MAX_PRINCIPAL_STRESS but got %d\n",
+						iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
-			matProp2[std::make_pair("failure_max_principal_stress", itype)] = force->numeric(FLERR, arg[ioffset + 1]);
+			failureModel[itype] = FAILURE_MAX_PRINCIPAL_STRESS;
+			Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype] =
+					force->numeric(
+					FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
-				printf("\n%60s\n", "maximum principal stress failure criterion");
-				printf("%60s : %g\n", "failure occurs when principal stress reaches limit",
-						SafeLookup("failure_max_principal_stress", itype));
+				printf("\n%60s\n",
+						"maximum principal stress failure criterion");
+				printf("%60s : %g\n",
+						"failure occurs when principal stress reaches limit",
+						Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype]);
 			}
 		} // end maximum principal stress failure criterion
 		else {
@@ -1642,11 +1859,12 @@ void PairTlsph::init_style() {
 	MPI_Allreduce(&onerad_frozen[1], &maxrad_frozen[1], atom->ntypes,
 	MPI_DOUBLE, MPI_MAX, world);
 
-	// if first init, create Fix needed for storing reference configuration neighbors
+// if first init, create Fix needed for storing reference configuration neighbors
 
 	int igroup = group->find("tlsph");
 	if (igroup == -1)
-		error->all(FLERR, "Pair style tlsph requires its particles to be part of a group named tlsph. This group does not exist.");
+		error->all(FLERR,
+				"Pair style tlsph requires its particles to be part of a group named tlsph. This group does not exist.");
 
 	if (fix_tlsph_reference_configuration == NULL) {
 		char **fixarg = new char*[3];
@@ -1655,12 +1873,14 @@ void PairTlsph::init_style() {
 		fixarg[2] = (char *) "SMD_TLSPH_NEIGHBORS";
 		modify->add_fix(3, fixarg);
 		delete[] fixarg;
-		fix_tlsph_reference_configuration = (FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[modify->nfix - 1];
+		fix_tlsph_reference_configuration =
+				(FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[modify->nfix
+						- 1];
 		fix_tlsph_reference_configuration->pair = this;
 	}
 
-	// find associated SMD_TLSPH_NEIGHBORS fix that must exist
-	// could have changed locations in fix list since created
+// find associated SMD_TLSPH_NEIGHBORS fix that must exist
+// could have changed locations in fix list since created
 
 	ifix_tlsph = -1;
 	for (int i = 0; i < modify->nfix; i++)
@@ -1727,7 +1947,8 @@ void *PairTlsph::extract(const char *str, int &i) {
 
 /* ---------------------------------------------------------------------- */
 
-int PairTlsph::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
+int PairTlsph::pack_forward_comm(int n, int *list, double *buf, int pbc_flag,
+		int *pbc) {
 	int i, j, m;
 	int *mol = atom->molecule;
 	double *damage = atom->damage;
@@ -1892,7 +2113,9 @@ double PairTlsph::TestMatricesEqual(Matrix3d A, Matrix3d B, double eps) {
 	diff = A - B;
 	double norm = diff.norm();
 	if (norm > eps) {
-		printf("Matrices A and B are not equal! The L2-norm difference is: %g\n", norm);
+		printf(
+				"Matrices A and B are not equal! The L2-norm difference is: %g\n",
+				norm);
 		cout << "Here is matrix A:" << endl << A << endl;
 		cout << "Here is matrix B:" << endl << B << endl;
 	}
@@ -1904,8 +2127,10 @@ double PairTlsph::TestMatricesEqual(Matrix3d A, Matrix3d B, double eps) {
  determined by longitudinal modulus
  ------------------------------------------------------------------------- */
 
-void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt, const double d_iso, const double p_rate,
-		const Matrix3d d_dev, const Matrix3d sigma_dev_rate, const double damage, double &K_eff, double &mu_eff, double &M_eff) {
+void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt,
+		const double d_iso, const double p_rate, const Matrix3d d_dev,
+		const Matrix3d sigma_dev_rate, const double damage, double &K_eff,
+		double &mu_eff, double &M_eff) {
 	double M0; // initial longitudinal modulus
 	double shear_rate_sq;
 
@@ -1931,13 +2156,15 @@ void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt,
 	}
 
 	if (domain->dimension == 3) {
-		// Calculate 2 mu by looking at ratio shear stress / shear strain. Use numerical softening to avoid divide-by-zero.
+// Calculate 2 mu by looking at ratio shear stress / shear strain. Use numerical softening to avoid divide-by-zero.
 		mu_eff = 0.5
-				* (sigma_dev_rate(0, 1) / (d_dev(0, 1) + 1.0e-16) + sigma_dev_rate(0, 2) / (d_dev(0, 2) + 1.0e-16)
+				* (sigma_dev_rate(0, 1) / (d_dev(0, 1) + 1.0e-16)
+						+ sigma_dev_rate(0, 2) / (d_dev(0, 2) + 1.0e-16)
 						+ sigma_dev_rate(1, 2) / (d_dev(1, 2) + 1.0e-16));
 
-		// Calculate magnitude of deviatoric strain rate. This is used for deciding if shear modulus should be computed from current rate or be taken as the initial value.
-		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2);
+// Calculate magnitude of deviatoric strain rate. This is used for deciding if shear modulus should be computed from current rate or be taken as the initial value.
+		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2)
+				+ d_dev(1, 2) * d_dev(1, 2);
 	} else {
 		mu_eff = 0.5 * (sigma_dev_rate(0, 1) / (d_dev(0, 1) + 1.0e-16));
 		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1);
@@ -1955,14 +2182,15 @@ void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt,
 		mu_eff = Lookup[SHEAR_MODULUS][itype];
 	}
 
-	//mu_eff = Lookup[SHEAR_MODULUS][itype];
+//mu_eff = Lookup[SHEAR_MODULUS][itype];
 
 	if (K_eff < 0.0) {
 		printf("K_eff = %f, p_rate=%f, vol_rate=%f\n", K_eff, p_rate, d_iso);
 	}
 
 	if (mu_eff < 0.0) {
-		printf("mu_eff = %f, tau=%f, gamma=%f\n", mu_eff, sigma_dev_rate(0, 1), d_dev(0, 1));
+		printf("mu_eff = %f, tau=%f, gamma=%f\n", mu_eff, sigma_dev_rate(0, 1),
+				d_dev(0, 1));
 		error->one(FLERR, "");
 	}
 
@@ -1978,10 +2206,12 @@ double PairTlsph::SafeLookup(std::string str, int itype) {
 	error->all(FLERR, "");
 	char msg[128];
 	if (matProp2.count(std::make_pair(str, itype)) == 1) {
-		cout << "returning look up value %d " << matProp2[std::make_pair(str, itype)] << endl;
+		cout << "returning look up value %d "
+				<< matProp2[std::make_pair(str, itype)] << endl;
 		return matProp2[std::make_pair(str, itype)];
 	} else {
-		sprintf(msg, "failed to lookup indentifier [%s] for particle type %d", str.c_str(), itype);
+		sprintf(msg, "failed to lookup indentifier [%s] for particle type %d",
+				str.c_str(), itype);
 		error->all(FLERR, msg);
 	}
 	return 1.0;
@@ -2019,7 +2249,8 @@ Matrix3d PairTlsph::LimitEigenvalues(Matrix3d S, double limitEigenvalue) {
 	double amax_eigenvalue = fabs(max_eigenvalue);
 	double amin_eigenvalue = fabs(min_eigenvalue);
 
-	if ((amax_eigenvalue > limitEigenvalue) || (amin_eigenvalue > limitEigenvalue)) {
+	if ((amax_eigenvalue > limitEigenvalue)
+			|| (amin_eigenvalue > limitEigenvalue)) {
 		if (amax_eigenvalue > amin_eigenvalue) { // need to scale with max_eigenvalue
 			double scale = amax_eigenvalue / limitEigenvalue;
 			Matrix3d V = es.eigenvectors();
@@ -2043,7 +2274,8 @@ Matrix3d PairTlsph::LimitEigenvalues(Matrix3d S, double limitEigenvalue) {
 /* ----------------------------------------------------------------------
  compute pressure. Called from AssembleStress().
  ------------------------------------------------------------------------- */
-void PairTlsph::ComputePressure(const int i, const double pInitial, const double d_iso, double &pFinal, double &p_rate) {
+void PairTlsph::ComputePressure(const int i, const double pInitial,
+		const double d_iso, double &pFinal, double &p_rate) {
 	double *rmass = atom->rmass;
 	double *vfrac = atom->vfrac;
 	double *e = atom->e;
@@ -2060,22 +2292,29 @@ void PairTlsph::ComputePressure(const int i, const double pInitial, const double
 
 	switch (eos[itype]) {
 	case EOS_LINEAR:
-		LinearEOS(Lookup[BULK_MODULUS][itype], pInitial, d_iso, dt, pFinal, p_rate);
+		LinearEOS(Lookup[BULK_MODULUS][itype], pInitial, d_iso, dt, pFinal,
+				p_rate);
 		break;
 	case EOS_NONE:
 		pFinal = 0.0;
 		p_rate = 0.0;
 		break;
 	case EOS_SHOCK:
-		//  rho,  rho0,  e,  e0,  c0,  S,  Gamma,  pInitial,  dt,  &pFinal,  &p_rate);
-		ShockEOS(rho, Lookup[REFERENCE_DENSITY][itype], mass_specific_energy, 0.0, Lookup[EOS_SHOCK_C0][itype],
-				Lookup[EOS_SHOCK_S][itype], Lookup[EOS_SHOCK_GAMMA][itype], pInitial, dt, pFinal, p_rate);
+//  rho,  rho0,  e,  e0,  c0,  S,  Gamma,  pInitial,  dt,  &pFinal,  &p_rate);
+		ShockEOS(rho, Lookup[REFERENCE_DENSITY][itype], mass_specific_energy,
+				0.0, Lookup[EOS_SHOCK_C0][itype], Lookup[EOS_SHOCK_S][itype],
+				Lookup[EOS_SHOCK_GAMMA][itype], pInitial, dt, pFinal, p_rate);
 		break;
 	case EOS_POLYNOMIAL:
-		polynomialEOS(rho, Lookup[REFERENCE_DENSITY][itype], vol_specific_energy, SafeLookup("eos_polynomial_c0", itype),
-				SafeLookup("eos_polynomial_c1", itype), SafeLookup("eos_polynomial_c2", itype),
-				SafeLookup("eos_polynomial_c3", itype), SafeLookup("eos_polynomial_c4", itype),
-				SafeLookup("eos_polynomial_c5", itype), SafeLookup("eos_polynomial_c6", itype), pInitial, dt, pFinal, p_rate);
+		polynomialEOS(rho, Lookup[REFERENCE_DENSITY][itype],
+				vol_specific_energy, SafeLookup("eos_polynomial_c0", itype),
+				SafeLookup("eos_polynomial_c1", itype),
+				SafeLookup("eos_polynomial_c2", itype),
+				SafeLookup("eos_polynomial_c3", itype),
+				SafeLookup("eos_polynomial_c4", itype),
+				SafeLookup("eos_polynomial_c5", itype),
+				SafeLookup("eos_polynomial_c6", itype), pInitial, dt, pFinal,
+				p_rate);
 
 		break;
 	default:
@@ -2087,13 +2326,15 @@ void PairTlsph::ComputePressure(const int i, const double pInitial, const double
 /* ----------------------------------------------------------------------
  Compute stress deviator. Called from AssembleStress().
  ------------------------------------------------------------------------- */
-void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_dev, const Matrix3d d_dev, Matrix3d &sigmaFinal_dev,
-		Matrix3d &sigma_dev_rate, double &plastic_strain_increment) {
+void PairTlsph::ComputeStressDeviator(const int i,
+		const Matrix3d sigmaInitial_dev, const Matrix3d d_dev,
+		Matrix3d &sigmaFinal_dev, Matrix3d &sigma_dev_rate,
+		double &plastic_strain_increment) {
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
 	int *type = atom->type;
 	double *rmass = atom->rmass;
-	//double *vfrac = atom->vfrac;
+//double *vfrac = atom->vfrac;
 	double *e = atom->e;
 	double dt = update->dt;
 	double yieldStress;
@@ -2105,32 +2346,39 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 
 	switch (strengthModel[itype]) {
 	case LINEAR_STRENGTH:
-		//printf("mu0 is %f\n", mu0[itype]);
-		//LinearStrength(Lookup[SHEAR_MODULUS][itype], sigmaInitial_dev, d[i], dt, &sigmaFinal_dev, &sigma_dev_rate);
+//printf("mu0 is %f\n", mu0[itype]);
+//LinearStrength(Lookup[SHEAR_MODULUS][itype], sigmaInitial_dev, d[i], dt, &sigmaFinal_dev, &sigma_dev_rate);
 
 		sigma_dev_rate = 2.0 * Lookup[SHEAR_MODULUS][itype] * d_dev;
 		sigmaFinal_dev = sigmaInitial_dev + dt * sigma_dev_rate;
 
 		break;
 	case LINEAR_DEFGRAD:
-		//LinearStrengthDefgrad(Lookup[LAME_LAMBDA][itype], Lookup[SHEAR_MODULUS][itype], Fincr[i], &sigmaFinal_dev);
-		//eff_plastic_strain[i] = 0.0;
-		//p_rate = pInitial - sigmaFinal_dev.trace() / 3.0;
-		//sigma_dev_rate = sigmaInitial_dev - Deviator(sigmaFinal_dev);
-		error->one(FLERR, "LINEAR_DEFGRAD is only for debugging purposes and currently deactivated.");
+//LinearStrengthDefgrad(Lookup[LAME_LAMBDA][itype], Lookup[SHEAR_MODULUS][itype], Fincr[i], &sigmaFinal_dev);
+//eff_plastic_strain[i] = 0.0;
+//p_rate = pInitial - sigmaFinal_dev.trace() / 3.0;
+//sigma_dev_rate = sigmaInitial_dev - Deviator(sigmaFinal_dev);
+		error->one(FLERR,
+				"LINEAR_DEFGRAD is only for debugging purposes and currently deactivated.");
 		R[i].setIdentity();
 		break;
 	case LINEAR_PLASTICITY:
 
-		yieldStress = Lookup[YIELD_STRESS][itype] + Lookup[HARDENING_PARAMETER][itype] * eff_plastic_strain[i];
-		LinearPlasticStrength(Lookup[SHEAR_MODULUS][itype], yieldStress, sigmaInitial_dev, d_dev, dt, sigmaFinal_dev,
-				sigma_dev_rate, plastic_strain_increment);
+		yieldStress = Lookup[YIELD_STRESS][itype]
+				+ Lookup[HARDENING_PARAMETER][itype] * eff_plastic_strain[i];
+		LinearPlasticStrength(Lookup[SHEAR_MODULUS][itype], yieldStress,
+				sigmaInitial_dev, d_dev, dt, sigmaFinal_dev, sigma_dev_rate,
+				plastic_strain_increment);
 		break;
 	case STRENGTH_JOHNSON_COOK:
-		JohnsonCookStrength(Lookup[SHEAR_MODULUS][itype], Lookup[HEAT_CAPACITY][itype], mass_specific_energy, Lookup[JC_A][itype],
-				Lookup[JC_B][itype], Lookup[JC_a][itype], Lookup[JC_C][itype], Lookup[JC_epdot0][itype], Lookup[JC_T0][itype],
-				Lookup[JC_Tmelt][itype], Lookup[JC_M][itype], dt, eff_plastic_strain[i], eff_plastic_strain_rate[i],
-				sigmaInitial_dev, d_dev, sigmaFinal_dev, sigma_dev_rate, plastic_strain_increment);
+		JohnsonCookStrength(Lookup[SHEAR_MODULUS][itype],
+				Lookup[HEAT_CAPACITY][itype], mass_specific_energy,
+				Lookup[JC_A][itype], Lookup[JC_B][itype], Lookup[JC_a][itype],
+				Lookup[JC_C][itype], Lookup[JC_epdot0][itype],
+				Lookup[JC_T0][itype], Lookup[JC_Tmelt][itype],
+				Lookup[JC_M][itype], dt, eff_plastic_strain[i],
+				eff_plastic_strain_rate[i], sigmaInitial_dev, d_dev,
+				sigmaFinal_dev, sigma_dev_rate, plastic_strain_increment);
 		break;
 	case STRENGTH_NONE:
 		sigmaFinal_dev.setZero();
@@ -2146,8 +2394,10 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 /* ----------------------------------------------------------------------
  Compute damage. Called from AssembleStress().
  ------------------------------------------------------------------------- */
-void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const double pFinal, const Matrix3d sigmaFinal,
-		const Matrix3d sigmaFinal_dev, Matrix3d &sigma_damaged, double &damage_increment) {
+void PairTlsph::ComputeDamage(const int i, const Matrix3d strain,
+		const double pFinal, const Matrix3d sigmaFinal,
+		const Matrix3d sigmaFinal_dev, Matrix3d &sigma_damaged,
+		double &damage_increment) {
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
 	int *type = atom->type;
@@ -2155,38 +2405,58 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const double p
 	double dt = update->dt;
 	int itype = type[i];
 	bool damage_flag = false;
+	double jc_failure_strain;
 
-	if (CheckKeywordPresent("failure_max_principal_stress", itype)) {
+	switch (failureModel[itype]) {
+	case FAILURE_NONE:
+		damage_increment = 0.0;
+		damage_flag = false;
+		break;
+
+	case FAILURE_MAX_PRINCIPAL_STRESS:
 		/*
 		 * maximum stress failure criterion:
 		 */
-		damage_flag = IsotropicMaxStressDamage(strain, SafeLookup("failure_max_principal_stress", itype));
-	}
-	if (CheckKeywordPresent("failure_max_principal_strain", itype)) {
+		damage_flag = IsotropicMaxStressDamage(sigmaFinal,
+				Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype]);
+		break;
+	case FAILURE_MAX_PRINCIPAL_STRAIN:
 		/*
 		 * maximum strain failure criterion:
 		 */
-		damage_flag = IsotropicMaxStrainDamage(strain, SafeLookup("failure_max_principal_strain", itype));
-	}
+		damage_flag = IsotropicMaxStrainDamage(strain,
+				Lookup[FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD][itype]);
+		break;
 
-	if (Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype] > 0.0) {
-
-		if (eff_plastic_strain[i] >= 0.99 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) {
+	case FAILURE_MAX_PLASTIC_STRAIN:
+		if (eff_plastic_strain[i]
+				>= 0.99 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) {
 			damage_flag = true;
+		} else {
+			damage_flag = false;
 		}
+		break;
 
-	}
+	case FAILURE_JOHNSON_COOK:
 
-	if (CheckKeywordPresent("failure_JC_d1", itype)) {
+		error->one(FLERR, "not yet implemented");
+		jc_failure_strain = JohnsonCookFailureStrain(pFinal, sigmaFinal_dev,
+				SafeLookup("failure_JC_d1", itype),
+				SafeLookup("failure_JC_d2", itype),
+				SafeLookup("failure_JC_d3", itype),
+				SafeLookup("failure_JC_d4", itype),
+				SafeLookup("failure_JC_epdot0", itype),
+				eff_plastic_strain_rate[i]);
 
-		double jc_failure_strain = JohnsonCookFailureStrain(pFinal, sigmaFinal_dev, SafeLookup("failure_JC_d1", itype),
-				SafeLookup("failure_JC_d2", itype), SafeLookup("failure_JC_d3", itype), SafeLookup("failure_JC_d4", itype),
-				SafeLookup("failure_JC_epdot0", itype), eff_plastic_strain_rate[i]);
-
-		//cout << "plastic strain increment is " << plastic_strain_increment << "  jc fs is " << jc_failure_strain << endl;
+//cout << "plastic strain increment is " << plastic_strain_increment << "  jc fs is " << jc_failure_strain << endl;
 		if (eff_plastic_strain[i] / jc_failure_strain > 1.0) {
 			damage_flag = true;
 		}
+		break;
+
+	default:
+		error->one(FLERR, "unknown failure model.");
+		break;
 	}
 
 	/*
@@ -2194,21 +2464,32 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const double p
 	 * Therefore compute a damage increment which is time-integrated in AssembleStress().
 	 */
 
+//	if (damage_flag == true) {
+//		damage_increment = dt * Lookup[SIGNAL_VELOCITY][itype]
+//				/ (100.0 * radius[i]);
+//	} else {
+//		damage_increment = 0.0;
+//	}
+	/*
+	 * try: set damage flag to either true or false, depending only on current status
+	 */
+
 	if (damage_flag == true) {
-		damage_increment = dt * Lookup[SIGNAL_VELOCITY][itype] / (100.0 * radius[i]);
+		damage_increment = 1.0;
 	} else {
 		damage_increment = 0.0;
 	}
 }
 
-void PairTlsph::spiky_kernel_and_derivative(const double h, const double r, double &wf, double &wfd) {
+void PairTlsph::spiky_kernel_and_derivative(const double h, const double r,
+		double &wf, double &wfd) {
 
 	/*
 	 * Spiky kernel
 	 */
 
 	if (r >= h) {
-		//printf("r=%f > h=%f in Spiky kernel\n", r, h);
+//printf("r=%f > h=%f in Spiky kernel\n", r, h);
 		wf = wfd = 0.0;
 		return;
 	}

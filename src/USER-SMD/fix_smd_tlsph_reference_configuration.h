@@ -55,6 +55,7 @@ protected:
 	int *npartner;                // # of touching partners of each atom
 	tagint **partner;             // global atom IDs for the partners
 	float **wfd_list, **wf_list;
+	float **degradation_ij; // per-pair interaction degradation status
 
 	class Pair *pair;
 

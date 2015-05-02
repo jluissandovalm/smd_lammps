@@ -1,0 +1,67 @@
+# TLSPH example: elongate a 2d strip of elastic material py pulling its ends apart
+# define initial parameters
+variable 	l0 equal 1.0 # lattice spacing for creating particles
+variable 	rho equal 1 # initial mass density
+variable 	E equal 1.0 # Young's modulus
+variable 	nu equal 0.3 # Poisson ratio
+variable 	h equal 3.01*${l0} # SPH smoothing kernel diameter
+variable 	vol_one equal ${l0}^2 # volume of one particle
+variable 	mass_one equal ${vol_one}*${rho} # mass of one particle
+variable 	skin equal 0.5*${l0} # Verlet list range
+variable 	vel equal 0.005 # pull velocity
+units 		si # si means: a consistent system of units is used. Here: mm / GPa / ms
+dimension 2 	# this is a 2d plane-strain simulation
+boundary 	sm sm p # simulation box boundaries
+atom_style 	smd
+neighbor 	${skin} bin
+neigh_modify 	every 10 delay 0 check yes # re-build neighbor list every 10 steps
+newton 		off 	# required for SMD simulations!
+comm_modify 	vel yes # required for SMD simulations!
+atom_modify	map array
+# create simulation box and particles
+lattice 	sq ${l0}
+region 		box block -10 10 -10 10 -0.01 0.01 units box
+create_box 	1 box
+create_atoms 	1 box
+group		tlsph type 1
+set 		group all mass ${mass_one}
+set 		group all volume ${vol_one}
+set 		group all diameter ${h} # set SPH kernel radius
+#displace_atoms all random 0.1 0.1 0.0 2321
+# create particle groups for applying displacement boundary conditions
+region 		top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
+region 		bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
+group top region top # top row of particles
+group bot region bot # bottom row of particles
+pair_style tlsph # activate Total-Lagrangian SPH
+# rh0 E nu Q1 Q2 hg Cp
+pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 1.00 0.0 100 1.0 &
+		*LINEAR_PLASTICITY 0.2 0.0 &
+		*EOS_LINEAR &
+		*END
+#		*FAILURE_MAX_PLASTIC_STRAIN 0.5 &
+
+compute p all smd/plastic_strain
+compute S all smd/tlsph_stress # Cauchy stress tensor
+compute D all smd/tlsph_strain_rate
+compute nn all smd/tlsph_num_neighs # number of neighbors for each particle
+compute damage all smd/damage
+dump dump_id all custom 1 dump.LAMMPS id type x y z &
+c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn c_p &
+c_D[1] c_D[2] c_D[4] c_damage radius
+dump_modify dump_id first yes
+# apply velocity boundary condition to top and bottom rows of particles
+velocity top set 0.0 ${vel} 0.0 sum no units box
+velocity bot set 0.0 -${vel} 0.0 sum no units box
+fix topfix top setforce 0 0 0
+fix botfix bot setforce 0 0 0
+# define variables for outputting stress/strain curve. obtain stress as average of top and
+# bottom forces and divide by the initial cross section area (20 mm * 1 mm)
+fix dtfix all smd/adjust_dt 0.1
+variable stress equal 0.5*(f_botfix[2]-f_topfix[2])/20
+variable strain equal (2.0*${vel}*f_dtfix/20) # strain: relative elongation
+fix integration_fix all smd/integrate_tlsph update xsph adjust_radius
+fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
+thermo 100
+thermo_style custom step dt f_dtfix time v_strain
+run 10000

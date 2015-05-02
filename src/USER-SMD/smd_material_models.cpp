@@ -405,17 +405,17 @@ bool IsotropicMaxStrainDamage(const Matrix3d E, const double maxStrain) {
 
  ------------------------------------------------------------------------- */
 
-bool IsotropicMaxStressDamage(const Matrix3d E, const double maxStrain) {
+bool IsotropicMaxStressDamage(const Matrix3d S, const double maxStress) {
 
 	/*
 	 * compute Eigenvalues of strain matrix
 	 */
 	SelfAdjointEigenSolver<Matrix3d> es;
-	es.compute(E); // compute eigenvalue and eigenvectors of strain
+	es.compute(S); // compute eigenvalue and eigenvectors of strain
 
 	double max_eigenvalue = es.eigenvalues().maxCoeff();
 
-	if (max_eigenvalue > maxStrain) {
+	if (max_eigenvalue > maxStress) {
 		return true;
 	} else {
 		return false;

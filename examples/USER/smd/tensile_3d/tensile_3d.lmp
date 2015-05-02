@@ -39,13 +39,16 @@ group           tlsph union all
 velocity        top set  ${vel} 0 0 sum no units box
 velocity        bot set -${vel} 0 0 sum no units box
 
-pair_style      tlsph *UPDATE_PAIRWISE 0.1 # activate Total-Lagrangian SPH
+pair_style      tlsph # activate Total-Lagrangian SPH
 #                           rh0    E    nu    Q1    Q2   hg    Cp
-pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} 1.0  0.0   50 1.0 &
+pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} 1.0  0.0   00 1.0 &
                 *LINEAR_PLASTICITY ${sigy} 0.0 &
 		*FAILURE_MAX_PLASTIC_STRAIN 0.5 &
 		*EOS_LINEAR &
                 *END
+
+
+
 
 compute         E all smd/tlsph_strain
 compute         P all smd/plastic_strain

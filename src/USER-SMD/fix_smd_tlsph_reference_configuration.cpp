@@ -49,6 +49,7 @@ FixSMD_TLSPH_ReferenceConfiguration::FixSMD_TLSPH_ReferenceConfiguration(LAMMPS 
 	partner = NULL;
 	wfd_list = NULL;
 	wf_list = NULL;
+	degradation_ij = NULL;
 	grow_arrays(atom->nmax);
 	atom->add_callback(0);
 
@@ -75,6 +76,7 @@ FixSMD_TLSPH_ReferenceConfiguration::~FixSMD_TLSPH_ReferenceConfiguration() {
 	memory->destroy(partner);
 	memory->destroy(wfd_list);
 	memory->destroy(wf_list);
+	memory->destroy(degradation_ij);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -278,6 +280,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		for (jj = 0; jj < maxpartner; jj++) {
 			wfd_list[i][jj] = 0.0;
 			wf_list[i][jj] = 0.0;
+			degradation_ij[i][jj] = 0.0;
 		}
 	}
 
@@ -349,6 +352,8 @@ double FixSMD_TLSPH_ReferenceConfiguration::memory_usage() {
 	int nmax = atom->nmax;
 	int bytes = nmax * sizeof(int);
 	bytes += nmax * maxpartner * sizeof(tagint); // partner array
+	bytes += nmax * maxpartner * sizeof(float); // wf_list
+	bytes += nmax * maxpartner * sizeof(float); // wfd_list
 	bytes += nmax * maxpartner * sizeof(float); // damage_per_interaction array
 	bytes += nmax * sizeof(int); // npartner array
 	return bytes;
@@ -365,6 +370,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::grow_arrays(int nmax) {
 	memory->grow(partner, nmax, maxpartner, "tlsph_refconfig_neigh:partner");
 	memory->grow(wfd_list, nmax, maxpartner, "tlsph_refconfig_neigh:wfd");
 	memory->grow(wf_list, nmax, maxpartner, "tlsph_refconfig_neigh:wf");
+	memory->grow(degradation_ij, nmax, maxpartner, "tlsph_refconfig_neigh:degradation_ij");
 }
 
 /* ----------------------------------------------------------------------
@@ -377,6 +383,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::copy_arrays(int i, int j, int delflag)
 		partner[j][m] = partner[i][m];
 		wfd_list[j][m] = wfd_list[i][m];
 		wf_list[j][m] = wf_list[i][m];
+		degradation_ij[j][m] = degradation_ij[i][m];
 	}
 }
 
@@ -396,6 +403,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::pack_exchange(int i, double *buf) {
 		buf[m++] = partner[i][n];
 		buf[m++] = wfd_list[i][n];
 		buf[m++] = wf_list[i][n];
+		buf[m++] = degradation_ij[i][n];
 	}
 	return m;
 
@@ -423,6 +431,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::unpack_exchange(int nlocal, double *buf
 		partner[nlocal][n] = static_cast<tagint>(buf[m++]);
 		wfd_list[nlocal][n] = static_cast<float>(buf[m++]);
 		wf_list[nlocal][n] = static_cast<float>(buf[m++]);
+		degradation_ij[nlocal][n] = static_cast<float>(buf[m++]);
 	}
 	return m;
 }
@@ -439,6 +448,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::pack_restart(int i, double *buf) {
 		buf[m++] = partner[i][n];
 		buf[m++] = wfd_list[i][n];
 		buf[m++] = wf_list[i][n];
+		buf[m++] = degradation_ij[i][n];
 	}
 	return m;
 }

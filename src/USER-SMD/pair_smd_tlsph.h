@@ -95,6 +95,7 @@ protected:
 	 * per-type arrays
 	 */
 	int *strengthModel, *eos;
+	int *failureModel;
 	double *onerad_dynamic, *onerad_frozen, *maxrad_dynamic, *maxrad_frozen;
 
 
@@ -121,6 +122,8 @@ protected:
 	double update_threshold; // updateFlage is set to one if the relative displacement of a pair exceeds update_threshold
 	double cut_comm;
 
+
+
 	enum {
 		UPDATE_NONE = 5000
 	};
@@ -139,7 +142,16 @@ protected:
 		FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD = 24,
 		JC_A = 25, JC_B = 26, JC_a = 27, JC_C = 28, JC_epdot0 = 29, JC_T0 = 30, JC_Tmelt = 31, JC_M = 32,
 		EOS_SHOCK_C0 = 33, EOS_SHOCK_S = 34, EOS_SHOCK_GAMMA = 35, HARDENING_PARAMETER = 36,
-		MAX_KEY_VALUE = 37
+		FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD = 37,
+		FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD = 38,
+		MAX_KEY_VALUE = 39
+	};
+
+	// enumeration of failure / damage models
+	enum {
+		FAILURE_NONE = 4000,
+		FAILURE_MAX_PRINCIPAL_STRAIN = 4001, FAILURE_MAX_PRINCIPAL_STRESS = 4002,
+		FAILURE_MAX_PLASTIC_STRAIN = 4003, FAILURE_JOHNSON_COOK = 4004
 	};
 
 
