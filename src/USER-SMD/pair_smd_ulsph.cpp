@@ -1541,37 +1541,6 @@ void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
 
 
 /*
- * Pseudo-inverse via SVD
- */
-
-Matrix3d PairULSPH::pseudo_inverse_SVD(Matrix3d M) {
-
-	JacobiSVD<Matrix3d> svd(M, ComputeFullU | ComputeFullV);
-
-	Vector3d singularValuesInv;
-	Vector3d singularValues = svd.singularValues();
-	Matrix3d U = svd.matrixU();
-	Matrix3d V = svd.matrixV();
-
-//cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
-//cout << "Its singular values are:" << endl << singularValues << endl;
-
-	double pinvtoler = 1.0e-6;
-	for (long row = 0; row < 3; row++) {
-		if (singularValues(row) > pinvtoler) {
-			singularValuesInv(row) = 1.0 / singularValues(row);
-		} else {
-			singularValuesInv(row) = 0.0;
-		}
-	}
-
-	Matrix3d pInv;
-	pInv = V * singularValuesInv.asDiagonal() * U.transpose();
-
-	return pInv;
-}
-
-/*
  * EXTRACT
  */
 
@@ -1595,15 +1564,6 @@ void *PairULSPH::extract(const char *str, int &i) {
 	return NULL;
 }
 
-/*
- * deviator of a tensor
- */
-Matrix3d PairULSPH::Deviator(Matrix3d M) {
-	Matrix3d eye;
-	eye.setIdentity();
-	eye *= M.trace() / 3.0;
-	return M - eye;
-}
 
 /* ----------------------------------------------------------------------
  compute effective shear modulus by dividing rate of deviatoric stress with rate of shear deformation

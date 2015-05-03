@@ -23,7 +23,7 @@
  ------------------------------------------------------------------------- */
 
 #include "string.h"
-#include "compute_smd_ulsph_stress.h"
+#include "compute_smd_tlsph_dt.h"
 #include "atom.h"
 #include "update.h"
 #include "modify.h"
@@ -32,83 +32,75 @@
 #include "memory.h"
 #include "error.h"
 #include "pair.h"
-#include <Eigen/Eigen>
-using namespace Eigen;
+
 using namespace LAMMPS_NS;
 
 /* ---------------------------------------------------------------------- */
 
-ComputeSMDULSPHStress::ComputeSMDULSPHStress(LAMMPS *lmp, int narg, char **arg) :
+ComputeSMDTlsphDt::ComputeSMDTlsphDt(LAMMPS *lmp, int narg, char **arg) :
 		Compute(lmp, narg, arg) {
 	if (narg != 3)
-		error->all(FLERR, "Illegal compute smd/ulsph_stress command");
+		error->all(FLERR, "Illegal compute smd/tlsph_dt command");
+	if (atom->contact_radius_flag != 1)
+		error->all(FLERR,
+				"compute smd/tlsph_dt command requires atom_style with contact_radius (e.g. smd)");
 
 	peratom_flag = 1;
-	size_peratom_cols = 7;
+	size_peratom_cols = 0;
 
 	nmax = 0;
-	stress_array = NULL;
+	dt_vector = NULL;
 }
 
 /* ---------------------------------------------------------------------- */
 
-ComputeSMDULSPHStress::~ComputeSMDULSPHStress() {
-	memory->sfree(stress_array);
+ComputeSMDTlsphDt::~ComputeSMDTlsphDt() {
+	memory->sfree(dt_vector);
 }
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeSMDULSPHStress::init() {
+void ComputeSMDTlsphDt::init() {
 
 	int count = 0;
 	for (int i = 0; i < modify->ncompute; i++)
-		if (strcmp(modify->compute[i]->style, "smd/ulsph_stress") == 0)
+		if (strcmp(modify->compute[i]->style, "smd/tlsph_dt") == 0)
 			count++;
 	if (count > 1 && comm->me == 0)
-		error->warning(FLERR, "More than one compute smd/ulsph_stress");
+		error->warning(FLERR, "More than one compute smd/tlsph_dt");
 }
 
 /* ---------------------------------------------------------------------- */
 
-void ComputeSMDULSPHStress::compute_peratom() {
+void ComputeSMDTlsphDt::compute_peratom() {
 	invoked_peratom = update->ntimestep;
-	int *mask = atom->mask;
-	Matrix3d stress_deviator;
-	double von_mises_stress;
 
-	// grow vector array if necessary
+	// grow rhoVector array if necessary
 
 	if (atom->nlocal > nmax) {
-		memory->destroy(stress_array);
+		memory->sfree(dt_vector);
 		nmax = atom->nmax;
-		memory->create(stress_array, nmax, size_peratom_cols, "stresstensorVector");
-		array_atom = stress_array;
+		dt_vector = (double *) memory->smalloc(nmax * sizeof(double),
+				"atom:tlsph_dt_vector");
+		vector_atom = dt_vector;
 	}
 
 	int itmp = 0;
-	Matrix3d *T = (Matrix3d *) force->pair->extract("smd/ulsph/stressTensor_ptr", itmp);
-	if (T == NULL) {
-		error->all(FLERR, "compute smd/ulsph_stress could not access stress tensors. Are the matching pair styles present?");
+	double *particle_dt = (double *) force->pair->extract("smd/tlsph/particle_dt_ptr",
+			itmp);
+	if (particle_dt == NULL) {
+		error->all(FLERR,
+				"compute smd/tlsph_dt failed to access particle_dt array");
 	}
+
+	int *mask = atom->mask;
 	int nlocal = atom->nlocal;
 
 	for (int i = 0; i < nlocal; i++) {
-
 		if (mask[i] & groupbit) {
-			stress_deviator = Deviator(T[i]);
-			von_mises_stress = sqrt(3. / 2.) * stress_deviator.norm();
-			stress_array[i][0] = T[i](0, 0); // xx
-			stress_array[i][1] = T[i](1, 1); // yy
-			stress_array[i][2] = T[i](2, 2); // zz
-			stress_array[i][3] = T[i](0, 1); // xy
-			stress_array[i][4] = T[i](0, 2); // xz
-			stress_array[i][5] = T[i](1, 2); // yz
-			stress_array[i][6] = von_mises_stress;
-
+			dt_vector[i] = particle_dt[i];
 		} else {
-			for (int j = 0; j < size_peratom_cols; j++) {
-				stress_array[i][j] = 0.0;
-			}
+			dt_vector[i] = 0.0;
 		}
 	}
 }
@@ -117,17 +109,7 @@ void ComputeSMDULSPHStress::compute_peratom() {
  memory usage of local atom-based array
  ------------------------------------------------------------------------- */
 
-double ComputeSMDULSPHStress::memory_usage() {
-	double bytes = size_peratom_cols * nmax * sizeof(double);
+double ComputeSMDTlsphDt::memory_usage() {
+	double bytes = nmax * sizeof(double);
 	return bytes;
-}
-
-/*
- * deviator of a tensor
- */
-Matrix3d ComputeSMDULSPHStress::Deviator(Matrix3d M) {
-	Matrix3d eye;
-	eye.setIdentity();
-	eye *= M.trace() / 3.0;
-	return M - eye;
 }

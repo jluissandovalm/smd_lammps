@@ -180,6 +180,8 @@ void FixSMDTlsphDtReset::end_of_step() {
 
 	MPI_Allreduce(&dtmin, &dt, 1, MPI_DOUBLE, MPI_MIN, world);
 
+	//printf("dtmin is now: %f, dt is now%f\n", dtmin, dt);
+
 // if timestep didn't change, just return
 // else reset update->dt and other classes that depend on it
 

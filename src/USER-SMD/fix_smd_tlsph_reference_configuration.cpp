@@ -60,6 +60,7 @@ FixSMD_TLSPH_ReferenceConfiguration::FixSMD_TLSPH_ReferenceConfiguration(LAMMPS 
 	}
 
 	comm_forward = 14;
+	updateFlag = 1;
 
 	//error->one(FLERR, "hurz!");
 }
@@ -137,7 +138,6 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 	}
 
 	// sum all update flag across processors
-	int updateFlag;
 	MPI_Allreduce(updateFlag_ptr, &updateFlag, 1, MPI_INT, MPI_MAX, world);
 
 	if (updateFlag > 0) {
@@ -216,6 +216,8 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 	int itype, jtype;
 	double r, h, wf, wfd;
 	Vector3d dx;
+
+	if (updateFlag == 0) return;
 
 	int nlocal = atom->nlocal;
 	nmax = atom->nmax;
@@ -319,7 +321,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 	}
 
 	// bond statistics
-	if (update->ntimestep == 0) {
+	if (update->ntimestep > -1) {
 		n = 0;
 		for (i = 0; i < nlocal; i++) {
 			n += npartner[i];
@@ -329,10 +331,10 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 
 		if (comm->me == 0) {
 			if (screen) {
-				fprintf(screen, "TLSPH neighbors:\n");
+				fprintf(screen, "\nTLSPH neighbors:\n");
 				fprintf(screen, "  max # of neighbors/atom = %d\n", maxpartner);
 				fprintf(screen, "  total # of neighbors = %d\n", nall);
-				fprintf(screen, "  neighbors/atom = %g\n", (double) nall / atom->natoms);
+				fprintf(screen, "  neighbors/atom = %g\n\n", (double) nall / atom->natoms);
 			}
 			if (logfile) {
 				fprintf(logfile, "TLSPH neighbors:\n");
@@ -341,6 +343,8 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			}
 		}
 	}
+
+	updateFlag = 0; // set update flag to zero after the update
 
 }
 

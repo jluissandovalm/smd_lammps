@@ -98,8 +98,9 @@ void PairHertz::compute(int eflag, int vflag) {
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	double *radius = atom->contact_radius;
+	double *sph_radius = atom->radius;
 	double rcutSq;
-	double delx0, dely0, delz0, rSq0;
+	double delx0, dely0, delz0, rSq0, sphCut;
 
 	int newton_pair = force->newton_pair;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
@@ -131,9 +132,7 @@ void PairHertz::compute(int eflag, int vflag) {
 			delx = xtmp - x[j][0];
 			dely = ytmp - x[j][1];
 			delz = ztmp - x[j][2];
-			if (periodic) {
-				domain->minimum_image(delx, dely, delz);
-			}
+
 			rsq = delx * delx + dely * dely + delz * delz;
 
 			rj = scale * radius[j];
@@ -152,30 +151,30 @@ void PairHertz::compute(int eflag, int vflag) {
 					delx0 = x0[j][0] - x0[i][0];
 					dely0 = x0[j][1] - x0[i][1];
 					delz0 = x0[j][2] - x0[i][2];
+					if (periodic) {
+						domain->minimum_image(delx0, dely0, delz0);
+					}
 					rSq0 = delx0 * delx0 + dely0 * dely0 + delz0 * delz0; // initial distance
-					if (rSq0 < rcutSq) {
-						continue;
+					sphCut = sph_radius[i] + sph_radius[j];
+					if (rSq0 < sphCut * sphCut) {
+						rcut = 0.5 * rcut;
+						rcutSq = rcut * rcut;
+						if (rsq > rcutSq) {
+							continue;
+						}
 					}
 				}
 
 				r = sqrt(rsq);
+				//printf("hertz interaction, r=%f, cut=%f, h=%f\n", r, rcut, sqrt(rSq0));
 
 				// Hertzian short-range forces
 				delta = rcut - r; // overlap distance
 				r_geom = ri * rj / rcut;
-				if (domain->dimension == 3) {
-					//assuming poisson ratio = 1/4 for 3d
-					fpair = 1.066666667e0 * bulkmodulus[itype][jtype] * delta * sqrt(delta * r_geom); //  units: N
-					evdwl = fpair * 0.4e0 * delta; // GCG 25 April: this expression conserves total energy
-					dt_crit = 3.14 * sqrt(0.5 * (rmass[i] + rmass[j]) / (fpair / delta));
-				} else {
-					//assuming poisson ratio = 1/3 for 2d -- one factor of delta missing compared to 3d
-
-					fpair = 1.066666667e0 * bulkmodulus[itype][jtype] * delta * sqrt(delta * r_geom); //  units: N
-					//fpair = 0.16790413e0 * bulkmodulus[itype][jtype] * sqrt(delta * r_geom); // units: N
-					evdwl = fpair * 0.6666666666667e0 * delta;
-					dt_crit = 3.14 * sqrt(0.5 * (rmass[i] + rmass[j]) / (fpair / delta));
-				}
+				//assuming poisson ratio = 1/4 for 3d
+				fpair = 1.066666667e0 * bulkmodulus[itype][jtype] * delta * sqrt(delta * r_geom); //  units: N
+				evdwl = fpair * 0.4e0 * delta; // GCG 25 April: this expression conserves total energy
+				dt_crit = 3.14 * sqrt(0.5 * (rmass[i] + rmass[j]) / (fpair / delta));
 
 				stable_time_increment = MIN(stable_time_increment, dt_crit);
 				if (r > 2.0e-16) {

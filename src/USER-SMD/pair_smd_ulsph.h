@@ -53,12 +53,10 @@ public:
 	virtual double memory_usage();
 	int pack_forward_comm(int, int *, double *, int, int *);
 	void unpack_forward_comm(int, int, double *);
-	Matrix3d pseudo_inverse_SVD(Matrix3d);
 	void AssembleStressTensor();
 	void *extract(const char *, int &);
 	void PreCompute();
 	void PreCompute_DensitySummation();
-	Matrix3d Deviator(Matrix3d);
 	double effective_shear_modulus(const Matrix3d d_dev, const Matrix3d stressRateDev, const int itype);
 
 protected:

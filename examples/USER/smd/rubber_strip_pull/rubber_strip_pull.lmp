@@ -37,19 +37,20 @@ pair_style tlsph # activate Total-Lagrangian SPH
 # rh0 E nu Q1 Q2 hg Cp
 pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 1.00 0.0 100 1.0 &
 		*LINEAR_PLASTICITY 0.2 0.0 &
+		*FAILURE_MAX_PLASTIC_STRAIN 0.5 &
 		*EOS_LINEAR &
 		*END
-#		*FAILURE_MAX_PLASTIC_STRAIN 0.5 &
 
-compute p all smd/plastic_strain
-compute S all smd/tlsph_stress # Cauchy stress tensor
-compute D all smd/tlsph_strain_rate
-compute nn all smd/tlsph_num_neighs # number of neighbors for each particle
-compute damage all smd/damage
-dump dump_id all custom 1 dump.LAMMPS id type x y z &
-c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn c_p &
-c_D[1] c_D[2] c_D[4] c_damage radius
-dump_modify dump_id first yes
+
+compute 	p all smd/plastic_strain
+compute 	S all smd/tlsph_stress # Cauchy stress tensor
+compute 	D all smd/tlsph_strain_rate
+compute 	nn all smd/tlsph_num_neighs # number of neighbors for each particle
+compute 	damage all smd/damage
+dump 		dump_id all custom 100 dump.LAMMPS id type x y z &
+			c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn c_p &
+			c_D[1] c_D[2] c_D[4] c_damage radius
+dump_modify 	dump_id first yes
 # apply velocity boundary condition to top and bottom rows of particles
 velocity top set 0.0 ${vel} 0.0 sum no units box
 velocity bot set 0.0 -${vel} 0.0 sum no units box

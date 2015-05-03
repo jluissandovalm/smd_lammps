@@ -9,7 +9,6 @@
  *
  * ----------------------------------------------------------------------- */
 
-
 /* ----------------------------------------------------------------------
  LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
  http://lammps.sandia.gov, Sandia National Laboratories
@@ -63,29 +62,19 @@ public:
 	void *extract(const char *, int &);
 	int pack_forward_comm(int, int *, double *, int, int *);
 	void unpack_forward_comm(int, int, double *);
-	Matrix3d pseudo_inverse_SVD(Matrix3d);
-	void PolDec(Matrix3d &, Matrix3d *, Matrix3d *);
 	void AssembleStress();
-	Matrix3d Deviator(Matrix3d);
 
-	//void CheckIntegration();
 	void PreCompute();
 	void ComputeForces(int eflag, int vflag);
-	double TestMatricesEqual(Matrix3d, Matrix3d, double);
-	void effective_longitudinal_modulus(const int itype, const double dt, const double d_iso, const double p_rate, const Matrix3d d_dev, const Matrix3d sigma_dev_rate, const double damage,
-			                              double &K_eff, double &mu_eff, double &M_eff);
+	void effective_longitudinal_modulus(const int itype, const double dt, const double d_iso, const double p_rate,
+			const Matrix3d d_dev, const Matrix3d sigma_dev_rate, const double damage, double &K_eff, double &mu_eff, double &M_eff);
 
 	void ComputePressure(const int i, const double pInitial, const double d_iso, double &pFinal, double &p_rate);
 	void ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_dev, const Matrix3d d_dev, Matrix3d &sigmaFinal_dev,
 			Matrix3d &sigma_dev_rate, double &plastic_strain_increment);
-	void ComputeDamage(const int i, const Matrix3d strain, const double pFinal, const Matrix3d sigmaFinal, const Matrix3d sigmaFinal_dev, Matrix3d &sigma_damaged, double &damage_increment);
+	void ComputeDamage(const int i, const Matrix3d strain, const double pFinal, const Matrix3d sigmaFinal,
+			const Matrix3d sigmaFinal_dev, const double plastic_strain_increment, Matrix3d &sigma_damaged);
 	void spiky_kernel_and_derivative(const double h, const double r, double &wf, double &wfd);
-
-	//void SmoothField();
-	//void SmoothFieldXSPH();
-	Matrix3d LimitEigenvalues(Matrix3d S, double limitEigenvalue);
-
-
 
 protected:
 	void allocate();
@@ -98,7 +87,6 @@ protected:
 	int *failureModel;
 	double *onerad_dynamic, *onerad_frozen, *maxrad_dynamic, *maxrad_frozen;
 
-
 	/*
 	 * per atom arrays
 	 */
@@ -109,7 +97,7 @@ protected:
 	Matrix3d *D, *W; // strain rate and spin tensor
 	Vector3d *smoothVelDifference;
 	Matrix3d *CauchyStress;
-	double *detF, *p_wave_speed, *shepardWeight;
+	double *detF, *shepardWeight, *particle_dt;
 	double *hourglass_error;
 	bool *shearFailureFlag;
 	int *numNeighsRefConfig;
@@ -122,26 +110,48 @@ protected:
 	double update_threshold; // updateFlage is set to one if the relative displacement of a pair exceeds update_threshold
 	double cut_comm;
 
-
-
 	enum {
 		UPDATE_NONE = 5000
 	};
 
 	enum {
-		LINEAR_DEFGRAD = 0, LINEAR_STRENGTH = 1, LINEAR_PLASTICITY = 2, STRENGTH_JOHNSON_COOK = 3,
+		LINEAR_DEFGRAD = 0,
+		LINEAR_STRENGTH = 1,
+		LINEAR_PLASTICITY = 2,
+		STRENGTH_JOHNSON_COOK = 3,
 		STRENGTH_NONE = 4,
-		EOS_LINEAR = 5, EOS_SHOCK = 6, EOS_POLYNOMIAL = 7,
+		EOS_LINEAR = 5,
+		EOS_SHOCK = 6,
+		EOS_POLYNOMIAL = 7,
 		EOS_NONE = 8,
-		UPDATE_CONSTANT_THRESHOLD = 9, UPDATE_PAIRWISE_RATIO = 10,
-		REFERENCE_DENSITY = 11, YOUNGS_MODULUS = 12, POISSON_RATIO = 13,
-		HOURGLASS_CONTROL_AMPLITUDE = 14, HEAT_CAPACITY = 15,
-		LAME_LAMBDA = 16, SHEAR_MODULUS = 17, M_MODULUS = 18,
-		SIGNAL_VELOCITY = 19, BULK_MODULUS = 20,
-		VISCOSITY_Q1 = 21, VISCOSITY_Q2 = 22, YIELD_STRESS = 23,
+		UPDATE_CONSTANT_THRESHOLD = 9,
+		UPDATE_PAIRWISE_RATIO = 10,
+		REFERENCE_DENSITY = 11,
+		YOUNGS_MODULUS = 12,
+		POISSON_RATIO = 13,
+		HOURGLASS_CONTROL_AMPLITUDE = 14,
+		HEAT_CAPACITY = 15,
+		LAME_LAMBDA = 16,
+		SHEAR_MODULUS = 17,
+		M_MODULUS = 18,
+		SIGNAL_VELOCITY = 19,
+		BULK_MODULUS = 20,
+		VISCOSITY_Q1 = 21,
+		VISCOSITY_Q2 = 22,
+		YIELD_STRESS = 23,
 		FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD = 24,
-		JC_A = 25, JC_B = 26, JC_a = 27, JC_C = 28, JC_epdot0 = 29, JC_T0 = 30, JC_Tmelt = 31, JC_M = 32,
-		EOS_SHOCK_C0 = 33, EOS_SHOCK_S = 34, EOS_SHOCK_GAMMA = 35, HARDENING_PARAMETER = 36,
+		JC_A = 25,
+		JC_B = 26,
+		JC_a = 27,
+		JC_C = 28,
+		JC_epdot0 = 29,
+		JC_T0 = 30,
+		JC_Tmelt = 31,
+		JC_M = 32,
+		EOS_SHOCK_C0 = 33,
+		EOS_SHOCK_S = 34,
+		EOS_SHOCK_GAMMA = 35,
+		HARDENING_PARAMETER = 36,
 		FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD = 37,
 		FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD = 38,
 		MAX_KEY_VALUE = 39
@@ -150,11 +160,11 @@ protected:
 	// enumeration of failure / damage models
 	enum {
 		FAILURE_NONE = 4000,
-		FAILURE_MAX_PRINCIPAL_STRAIN = 4001, FAILURE_MAX_PRINCIPAL_STRESS = 4002,
-		FAILURE_MAX_PLASTIC_STRAIN = 4003, FAILURE_JOHNSON_COOK = 4004
+		FAILURE_MAX_PRINCIPAL_STRAIN = 4001,
+		FAILURE_MAX_PRINCIPAL_STRESS = 4002,
+		FAILURE_MAX_PLASTIC_STRAIN = 4003,
+		FAILURE_JOHNSON_COOK = 4004
 	};
-
-
 
 	// C++ std dictionary to hold material model settings per particle type
 	typedef std::map<std::pair<std::string, int>, double> Dict;
@@ -196,8 +206,4 @@ private:
  * Blei: rho = 11.34e-6, c0=2000, s=1.46, Gamma=2.77
  * Stahl 1403: rho = 7.86e-3, c=4569, s=1.49, Gamma=2.17
  */
-
-
-
-
 

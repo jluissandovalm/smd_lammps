@@ -9,7 +9,6 @@
  *
  * ----------------------------------------------------------------------- */
 
-
 /* ----------------------------------------------------------------------
  LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
  http://lammps.sandia.gov, Sandia National Laboratories
@@ -45,7 +44,7 @@ ComputeSMDTLSPHStress::ComputeSMDTLSPHStress(LAMMPS *lmp, int narg, char **arg) 
 		error->all(FLERR, "Illegal compute smd/tlsph_stress command");
 
 	peratom_flag = 1;
-	size_peratom_cols = 6;
+	size_peratom_cols = 7;
 
 	nmax = 0;
 	stress_array = NULL;
@@ -73,7 +72,8 @@ void ComputeSMDTLSPHStress::init() {
 
 void ComputeSMDTLSPHStress::compute_peratom() {
 	invoked_peratom = update->ntimestep;
-	int *mol = atom->molecule;
+	Matrix3d stress_deviator;
+	double von_mises_stress;
 
 	// grow vector array if necessary
 
@@ -87,18 +87,27 @@ void ComputeSMDTLSPHStress::compute_peratom() {
 	int itmp = 0;
 	Matrix3d *T = (Matrix3d *) force->pair->extract("smd/tlsph/stressTensor_ptr", itmp);
 	if (T == NULL) {
-		error->all(FLERR,
-				"compute smd/tlsph_stress could not access stress tensors. Are the matching pair styles present?");
+		error->all(FLERR, "compute smd/tlsph_stress could not access stress tensors. Are the matching pair styles present?");
 	}
 	int nlocal = atom->nlocal;
+	int *mask = atom->mask;
 
 	for (int i = 0; i < nlocal; i++) {
-		stress_array[i][0] = T[i](0, 0); // xx
-		stress_array[i][1] = T[i](1, 1); // yy
-		stress_array[i][2] = T[i](2, 2); // zz
-		stress_array[i][3] = T[i](0, 1); // xy
-		stress_array[i][4] = T[i](0, 2); // xz
-		stress_array[i][5] = T[i](1, 2); // yz
+		if (mask[i] & groupbit) {
+			stress_deviator = Deviator(T[i]);
+			von_mises_stress = sqrt(3. / 2.) * stress_deviator.norm();
+			stress_array[i][0] = T[i](0, 0); // xx
+			stress_array[i][1] = T[i](1, 1); // yy
+			stress_array[i][2] = T[i](2, 2); // zz
+			stress_array[i][3] = T[i](0, 1); // xy
+			stress_array[i][4] = T[i](0, 2); // xz
+			stress_array[i][5] = T[i](1, 2); // yz
+			stress_array[i][6] = von_mises_stress;
+		} else {
+			for (int j = 0; j < size_peratom_cols; j++) {
+				stress_array[i][j] = 0.0;
+			}
+		}
 	}
 }
 

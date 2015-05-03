@@ -50,6 +50,7 @@ public:
 	int maxsize_restart();
 
 protected:
+	int updateFlag; // flag to update reference configuration
 	int nmax;
 	int maxpartner;
 	int *npartner;                // # of touching partners of each atom
