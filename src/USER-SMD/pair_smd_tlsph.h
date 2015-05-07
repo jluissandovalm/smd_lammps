@@ -99,7 +99,6 @@ protected:
 	Matrix3d *CauchyStress;
 	double *detF, *shepardWeight, *particle_dt;
 	double *hourglass_error;
-	bool *shearFailureFlag;
 	int *numNeighsRefConfig;
 
 	int nmax; // max number of atoms on this proc
@@ -172,7 +171,6 @@ protected:
 	//typedef Dict::const_iterator It;
 
 	int ifix_tlsph;
-	int not_first;
 	int update_method;
 
 	class FixSMD_TLSPH_ReferenceConfiguration *fix_tlsph_reference_configuration;
@@ -181,6 +179,7 @@ private:
 	double SafeLookup(std::string str, int itype);
 	bool CheckKeywordPresent(std::string str, int itype);
 	double **Lookup; // holds per-type material parameters for the quantities defined in enum statement above.
+	bool first; // if first is true, do not perform any computations, beacuse reference configuration is not ready yet.
 };
 
 }
