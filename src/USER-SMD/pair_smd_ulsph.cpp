@@ -82,7 +82,7 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	velocity_gradient_required = false; // turn off computation of velocity gradient by default
 	density_summation = velocity_gradient = false;
 
-	comm_forward = 18; // this pair style communicates 20 doubles to ghost atoms
+	comm_forward = 18; // this pair style communicates 18 doubles to ghost atoms
 	updateFlag = 0;
 }
 
@@ -759,7 +759,7 @@ void PairULSPH::AssembleStressTensor() {
 	double G_eff = 0.0; // effective shear modulus
 	double K_eff; // effective bulk modulus
 	double M, p_wave_speed;
-	double rho;
+	double rho, shear_rate;
 
 	dtCFL = 1.0e22;
 	eye.setIdentity();
@@ -874,7 +874,13 @@ void PairULSPH::AssembleStressTensor() {
 					error->one(FLERR, "unknown viscosity model.");
 					break;
 				case VISCOSITY_NEWTON:
-					newStressDeviator = 2.0 * Lookup[VISCOSITY_MU][itype] * d_dev;
+					newStressDeviator = 2.0 * Lookup[VISCOSITY_MU][itype] * d_dev; // newton original
+
+					//shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1)); // 2d
+					//newStressDeviator = 2.0 * PA6_280C(shear_rate) * d_dev;
+					//printf("here :)\n");
+
+
 					break;
 
 				}
@@ -903,10 +909,14 @@ void PairULSPH::AssembleStressTensor() {
 			p_wave_speed = sqrt(M / rho);
 			effm[i] = G_eff;
 
+<<<<<<< HEAD
 			dtCFL = MIN(radius[i] / p_wave_speed, dtCFL);
 
 			// viscous time step
 			dtCFL = MIN(radius[i] * radius[i] * rho / Lookup[VISCOSITY_MU][itype], dtCFL);
+=======
+			dtCFL = MIN( 2.0 * radius[i] / p_wave_speed, dtCFL);
+>>>>>>> branch 'master' of https://github.com/ganzenmg/lammps_current.git
 
 		} // end if (setflag[itype][itype] == 1)
 	} // end loop over nlocal
@@ -1586,6 +1596,10 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d s
 		G_eff = 0.0;
 	}
 
+//	if (G_eff < 0.0) {
+//		printf("G_eff = %g\n", G_eff);
+//	}
+
 	/*
 	 * Take care of the special case that the shear rate is very small, in which case the effective
 	 * sheear modulus cannot be compute accurately.
@@ -1604,6 +1618,12 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d s
 			G_eff = 0.0;
 		}
 
+<<<<<<< HEAD
+=======
+		if (strength[itype] != NONE) {
+			G_eff = Lookup[SHEAR_MODULUS][itype];
+		}
+>>>>>>> branch 'master' of https://github.com/ganzenmg/lammps_current.git
 	}
 	//printf("initial M=%f, current M=%f\n", M0, M);
 	return G_eff;
