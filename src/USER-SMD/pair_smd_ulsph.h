@@ -124,6 +124,7 @@ private:
 	int updateFlag; // indicates if any relative particle pair movement is significant compared to smoothing length
 
 	bool density_summation, velocity_gradient, gradient_correction_flag;
+	double *effm;
 
 };
 

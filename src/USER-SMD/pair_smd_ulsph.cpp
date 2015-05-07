@@ -44,11 +44,13 @@
 #include "smd_material_models.h"
 #include "smd_math.h"
 #include "smd_kernels.h"
+#include "smd_pa6_viscosity.h"
 
 using namespace SMD_Kernels;
 using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
+using namespace SMD_PA6_VISCOSITY;
 
 #include <Eigen/SVD>
 #include <Eigen/Eigen>
@@ -74,6 +76,7 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	numNeighs = NULL;
 	F = NULL;
 	rho = NULL;
+	effm = NULL;
 
 	artificial_stress_flag = false; // turn off artificial stress correction by default
 	velocity_gradient_required = false; // turn off computation of velocity gradient by default
@@ -110,6 +113,7 @@ PairULSPH::~PairULSPH() {
 		delete[] numNeighs;
 		delete[] F;
 		delete[] rho;
+		delete[] effm;
 
 	}
 }
@@ -324,7 +328,7 @@ void PairULSPH::PreCompute() {
 	 */
 
 	bool Shape_Matrix_Inversion_Success = false;
-	SelfAdjointEigenSolver<Matrix2d> es;
+	SelfAdjointEigenSolver < Matrix2d > es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	for (i = 0; i < nlocal; i++) {
@@ -444,7 +448,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	// double *contact_radius = atom->contact_radius;
 	Matrix3d S, D, V;
 	// int k;
-	SelfAdjointEigenSolver<Matrix3d> es;
+	SelfAdjointEigenSolver < Matrix3d > es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -472,6 +476,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 		F = new Matrix3d[nmax];
 		delete[] rho;
 		rho = new double[nmax];
+		delete[] effm;
+		effm = new double[nmax];
 	}
 
 // zero accumulators
@@ -873,15 +879,7 @@ void PairULSPH::AssembleStressTensor() {
 
 				}
 
-				// compute a "stress rate" for calculating an effective shear wave speed
-				if (dt > 1.0e-16) {
-					stressRateDev = newStressDeviator / dt;
-				} else {
-					stressRateDev.setZero();
-				}
-
-				// estimate effective shear modulus for time step stability
-				G_eff = effective_shear_modulus(d_dev, stressRateDev, itype);
+				G_eff = 0.0;
 
 			} // end if (viscosity[itype] != NONE)
 
@@ -903,8 +901,12 @@ void PairULSPH::AssembleStressTensor() {
 
 			M = K_eff + 4.0 * G_eff / 3.0;
 			p_wave_speed = sqrt(M / rho);
+			effm[i] = G_eff;
 
 			dtCFL = MIN(radius[i] / p_wave_speed, dtCFL);
+
+			// viscous time step
+			dtCFL = MIN(radius[i] * radius[i] * rho / Lookup[VISCOSITY_MU][itype], dtCFL);
 
 		} // end if (setflag[itype][itype] == 1)
 	} // end loop over nlocal
@@ -1436,10 +1438,8 @@ void PairULSPH::init_style() {
 	for (i = 0; i < nlocal; i++)
 		onerad_dynamic[type[i]] = MAX(onerad_dynamic[type[i]], radius[i]);
 
-	MPI_Allreduce(&onerad_dynamic[1], &maxrad_dynamic[1], atom->ntypes,
-	MPI_DOUBLE, MPI_MAX, world);
-	MPI_Allreduce(&onerad_frozen[1], &maxrad_frozen[1], atom->ntypes,
-	MPI_DOUBLE, MPI_MAX, world);
+	MPI_Allreduce(&onerad_dynamic[1], &maxrad_dynamic[1], atom->ntypes, MPI_DOUBLE, MPI_MAX, world);
+	MPI_Allreduce(&onerad_frozen[1], &maxrad_frozen[1], atom->ntypes, MPI_DOUBLE, MPI_MAX, world);
 
 }
 
@@ -1538,8 +1538,6 @@ void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
 	}
 }
 
-
-
 /*
  * EXTRACT
  */
@@ -1559,11 +1557,12 @@ void *PairULSPH::extract(const char *str, int &i) {
 		return (void *) &dtCFL;
 	} else if (strcmp(str, "smd/ulsph/updateFlag_ptr") == 0) {
 		return (void *) &updateFlag;
+	} else if (strcmp(str, "smd/ulsph/effective_modulus_ptr") == 0) {
+		return (void *) effm;
 	}
 
 	return NULL;
 }
-
 
 /* ----------------------------------------------------------------------
  compute effective shear modulus by dividing rate of deviatoric stress with rate of shear deformation
@@ -1579,8 +1578,12 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d s
 						+ stressRateDev(1, 2) / (d_dev(1, 2) + 1.0e-16));
 		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2);
 	} else {
-		G_eff = 0.5 * (stressRateDev(0, 1) / (d_dev(0, 1)));
+		G_eff = 0.5 * (stressRateDev(0, 1) / (d_dev(0, 1) + 1.0e-16));
 		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1);
+	}
+
+	if (G_eff < 0.0) {
+		G_eff = 0.0;
 	}
 
 	/*
@@ -1592,19 +1595,17 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d s
 	 * In the case of a material strength model, fall back to effective shear modulus = initial shear modulus
 	 */
 
-	if (shear_rate_sq < 1.0e-16) {
-		if (viscosity[itype] != NONE) {
+
+	if (shear_rate_sq < 0.1) {
+		if (strength[itype] != NONE) {
+			G_eff = Lookup[SHEAR_MODULUS][itype];
+			printf("hury\n");
+		} else {
 			G_eff = 0.0;
 		}
 
-		if (strength[itype] != NONE) {
-			G_eff = Lookup[SHEAR_MODULUS][itype];
-		}
-
 	}
-
 	//printf("initial M=%f, current M=%f\n", M0, M);
-
 	return G_eff;
 
 }

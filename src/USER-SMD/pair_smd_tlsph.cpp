@@ -77,7 +77,6 @@ PairTlsph::PairTlsph(LAMMPS *lmp) :
 	d = R = FincrInv = W = D = NULL;
 	detF = NULL;
 	smoothVelDifference = NULL;
-	shearFailureFlag = NULL;
 	numNeighsRefConfig = NULL;
 	shepardWeight = NULL;
 	CauchyStress = NULL;
@@ -86,7 +85,7 @@ PairTlsph::PairTlsph(LAMMPS *lmp) :
 	particle_dt = NULL;
 
 	updateFlag = 0;
-	not_first = 0;
+	first = true;
 	dtCFL = 0.0; // initialize dtCFL so it is set to safe value if extracted on zero-th timestep
 
 	comm_forward = 23; // this pair style communicates 20 doubles to ghost atoms : PK1 tensor + F tensor + shepardWeight
@@ -124,7 +123,6 @@ PairTlsph::~PairTlsph() {
 		delete[] FincrInv;
 		delete[] W;
 		delete[] D;
-		delete[] shearFailureFlag;
 		delete[] numNeighsRefConfig;
 		delete[] shepardWeight;
 		delete[] CauchyStress;
@@ -170,7 +168,6 @@ void PairTlsph::PreCompute() {
 		K[i].setZero();
 		Fincr[i].setZero();
 		Fdot[i].setZero();
-		shearFailureFlag[i] = false;
 		shepardWeight[i] = 0.0;
 		numNeighsRefConfig[i] = 0;
 		smoothVelDifference[i].setZero();
@@ -306,7 +303,8 @@ void PairTlsph::PreCompute() {
 					Fdot[i](2, 2) = 0.0;
 				}
 				detF[i] = Fincr[i].determinant();
-				FincrInv[i] = pseudo_inverse_SVD(Fincr[i]);;
+				FincrInv[i] = pseudo_inverse_SVD(Fincr[i]);
+				;
 				//FincrInv[i] = Fincr[i].inverse();
 
 				/*
@@ -431,8 +429,6 @@ void PairTlsph::compute(int eflag, int vflag) {
 		W = new Matrix3d[nmax]; // memory usage: 9 doubles; total 94 doubles
 		delete[] D;
 		D = new Matrix3d[nmax]; // memory usage: 9 doubles; total 103 doubles
-		delete[] shearFailureFlag;
-		shearFailureFlag = new bool[nmax]; // memory usage: 1 double; total 104 doubles
 		delete[] numNeighsRefConfig;
 		numNeighsRefConfig = new int[nmax]; // memory usage: 1 int; total 108 doubles
 		delete[] shepardWeight;
@@ -445,7 +441,21 @@ void PairTlsph::compute(int eflag, int vflag) {
 		particle_dt = new double[nmax];
 	}
 
-	if (update->ntimestep == 0) { // return on zeroth timestep because reference connectivity lists still needs to be built
+	if (first) { // return on first call, because reference connectivity lists still needs to be built. Also zero quantities which are otherwise undefined.
+		first = false;
+
+		for (int i = 0; i < atom->nlocal; i++) {
+			Fincr[i].setZero();
+			detF[i] = 0.0;
+			smoothVelDifference[i].setZero();
+			d[i].setZero();
+			D[i].setZero();
+			numNeighsRefConfig[i] = 0;
+			CauchyStress[i].setZero();
+			hourglass_error[i] = 0.0;
+			particle_dt[i] = 0.0;
+		}
+
 		return;
 	}
 
@@ -801,7 +811,6 @@ void PairTlsph::AssembleStress() {
 				 */
 
 				// ComputeDamage(i, strain, pFinal, sigmaFinal, sigmaFinal_dev, plastic_strain_increment, sigma_damaged);
-
 				if (JAUMANN) {
 					/*
 					 * sigma is already the co-rotated Cauchy stress.
@@ -850,7 +859,6 @@ void PairTlsph::AssembleStress() {
 				 * pre-multiply stress tensor with shape matrix to save computation in force loop
 				 */
 				PK1[i] = PK1[i] * K[i];
-
 
 				/*
 				 * compute stable time step according to Pronto 2d
@@ -1848,8 +1856,6 @@ void PairTlsph::unpack_forward_comm(int n, int first, double *buf) {
 	}
 }
 
-
-
 /* ----------------------------------------------------------------------
  compute effective P-wave speed
  determined by longitudinal modulus
@@ -1952,8 +1958,6 @@ bool PairTlsph::CheckKeywordPresent(std::string str, int itype) {
 	}
 	return false;
 }
-
-
 
 /* ----------------------------------------------------------------------
  compute pressure. Called from AssembleStress().
