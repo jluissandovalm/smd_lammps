@@ -237,7 +237,7 @@ int AtomVecSMD::pack_comm_vel(int n, int *list, double *buf, int pbc_flag, int *
 			buf[m++] = x[j][1];
 			buf[m++] = x[j][2]; //3
 			buf[m++] = radius[j];
-			buf[m++] = rmass[j]; // 5
+			buf[m++] = vfrac[j]; // 5
 			buf[m++] = v[j][0];
 			buf[m++] = v[j][1];
 			buf[m++] = v[j][2]; // 8
@@ -246,14 +246,6 @@ int AtomVecSMD::pack_comm_vel(int n, int *list, double *buf, int pbc_flag, int *
 			buf[m++] = vest[j][1];
 			buf[m++] = vest[j][2]; // 11
 			buf[m++] = e[j]; // 12
-
-			// temporary -- only ned this for smoothing of the stress field
-//			buf[m++] = tlsph_stress[j][0];
-//			buf[m++] = tlsph_stress[j][1];
-//			buf[m++] = tlsph_stress[j][2];
-//			buf[m++] = tlsph_stress[j][3];
-//			buf[m++] = tlsph_stress[j][4];
-//			buf[m++] = tlsph_stress[j][5]; // 19
 
 		}
 	} else {
@@ -273,7 +265,7 @@ int AtomVecSMD::pack_comm_vel(int n, int *list, double *buf, int pbc_flag, int *
 				buf[m++] = x[j][1] + dy;
 				buf[m++] = x[j][2] + dz;
 				buf[m++] = radius[j];
-				buf[m++] = rmass[j];
+				buf[m++] = vfrac[j];
 				buf[m++] = v[j][0];
 				buf[m++] = v[j][1];
 				buf[m++] = v[j][2]; // 8
@@ -294,7 +286,7 @@ int AtomVecSMD::pack_comm_vel(int n, int *list, double *buf, int pbc_flag, int *
 				buf[m++] = x[j][1] + dy;
 				buf[m++] = x[j][2] + dz;
 				buf[m++] = radius[j];
-				buf[m++] = rmass[j];
+				buf[m++] = vfrac[j];
 				if (mask[i] & deform_groupbit) {
 					buf[m++] = v[j][0] + dvx;
 					buf[m++] = v[j][1] + dvy;
@@ -329,7 +321,7 @@ int AtomVecSMD::pack_comm_hybrid(int n, int *list, double *buf) {
 	for (i = 0; i < n; i++) {
 		j = list[i];
 		buf[m++] = radius[j];
-		buf[m++] = rmass[j];
+		buf[m++] = vfrac[j];
 		buf[m++] = vest[j][0];
 		buf[m++] = vest[j][1];
 		buf[m++] = vest[j][2];
@@ -356,7 +348,7 @@ void AtomVecSMD::unpack_comm_vel(int n, int first, double *buf) {
 		x[i][1] = buf[m++];
 		x[i][2] = buf[m++]; //3
 		radius[i] = buf[m++];
-		rmass[i] = buf[m++]; // 5
+		vfrac[i] = buf[m++]; // 5
 		v[i][0] = buf[m++];
 		v[i][1] = buf[m++];
 		v[i][2] = buf[m++]; // 8
@@ -366,13 +358,6 @@ void AtomVecSMD::unpack_comm_vel(int n, int first, double *buf) {
 		vest[i][2] = buf[m++]; // 11
 		e[i] = buf[m++];
 
-		// temporary -- only ned this for smoothing of the stress field
-//		tlsph_stress[i][0] = buf[m++];
-//		tlsph_stress[i][1] = buf[m++];
-//		tlsph_stress[i][2] = buf[m++];
-//		tlsph_stress[i][3] = buf[m++];
-//		tlsph_stress[i][4] = buf[m++];
-//		tlsph_stress[i][5] = buf[m++];
 	}
 }
 
@@ -385,7 +370,7 @@ int AtomVecSMD::unpack_comm_hybrid(int n, int first, double *buf) {
 	last = first + n;
 	for (i = first; i < last; i++) {
 		radius[i] = buf[m++];
-		rmass[i] = buf[m++];
+		vfrac[i] = buf[m++];
 		vest[i][0] = buf[m++];
 		vest[i][1] = buf[m++];
 		vest[i][2] = buf[m++];

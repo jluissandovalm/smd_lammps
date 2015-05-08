@@ -44,9 +44,6 @@ class FixSMDIntegrateUlsph : public Fix {
   virtual void initial_integrate(int);
   virtual void final_integrate();
   void reset_dt();
-  int pack_forward_comm(int, int *, double *, int, int *);
-  void unpack_forward_comm(int, int, double *);
-
 
  private:
   class NeighList *list;

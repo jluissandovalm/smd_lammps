@@ -57,7 +57,7 @@ public:
 	void *extract(const char *, int &);
 	void PreCompute();
 	void PreCompute_DensitySummation();
-	double effective_shear_modulus(const Matrix3d d_dev, const Matrix3d stressRateDev, const int itype);
+	double effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype);
 
 protected:
 
@@ -123,7 +123,7 @@ private:
 	bool velocity_gradient_required;
 	int updateFlag; // indicates if any relative particle pair movement is significant compared to smoothing length
 
-	bool density_summation, velocity_gradient, gradient_correction_flag;
+	bool density_summation, density_continuity, velocity_gradient, gradient_correction_flag;
 	double *effm;
 
 };

@@ -103,7 +103,8 @@ FixSMDIntegrateUlsph::FixSMDIntegrateUlsph(LAMMPS *lmp, int narg, char **arg) :
 			max_nn = force->inumeric(FLERR, arg[iarg]);
 
 			if (comm->me == 0) {
-				printf("... will adjust smoothing length dynamically with factor %g to achieve %d to %d neighbors per particle.\n ", adjust_radius_factor, min_nn, max_nn);
+				printf("... will adjust smoothing length dynamically with factor %g to achieve %d to %d neighbors per particle.\n ",
+						adjust_radius_factor, min_nn, max_nn);
 			}
 
 		} else if (strcmp(arg[iarg], "limit_velocity") == 0) {
@@ -131,7 +132,6 @@ FixSMDIntegrateUlsph::FixSMDIntegrateUlsph(LAMMPS *lmp, int narg, char **arg) :
 	}
 
 	// set comm sizes needed by this fix
-	comm_forward = 1;
 	atom->add_callback(0);
 
 	time_integrate = 1;
@@ -245,6 +245,7 @@ void FixSMDIntegrateUlsph::final_integrate() {
 	double **f = atom->f;
 	double *e = atom->e;
 	double *de = atom->de;
+	double *vfrac = atom->vfrac;
 	double *radius = atom->radius;
 	double *contact_radius = atom->contact_radius;
 	int *mask = atom->mask;
@@ -253,6 +254,8 @@ void FixSMDIntegrateUlsph::final_integrate() {
 		nlocal = atom->nfirst;
 	double dtfm, vsq, scale;
 	double *rmass = atom->rmass;
+	double vol_increment;
+	Matrix3d D;
 
 	/*
 	 * get current number of SPH neighbors from ULSPH pair style
@@ -262,6 +265,11 @@ void FixSMDIntegrateUlsph::final_integrate() {
 	int *nn = (int *) force->pair->extract("smd/ulsph/numNeighs_ptr", itmp);
 	if (nn == NULL) {
 		error->one(FLERR, "fix smd/integrate_ulsph failed to accesss num_neighs array");
+	}
+
+	Matrix3d *L = (Matrix3d *) force->pair->extract("smd/ulsph/velocityGradient_ptr", itmp);
+	if (L == NULL) {
+		error->one(FLERR, "fix smd/integrate_ulsph failed to accesss velocityGradient array");
 	}
 
 	for (int i = 0; i < nlocal; i++) {
@@ -295,12 +303,11 @@ void FixSMDIntegrateUlsph::final_integrate() {
 
 			}
 
-		}
-	}
+			D = 0.5 * (L[i] + L[i].transpose());
+			vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
+			vfrac[i] += vol_increment;
 
-	// might have changed radius above, communicate updated radius to ghosts
-	if (adjust_radius_flag) {
-		comm->forward_comm_fix(this);
+		}
 	}
 }
 
@@ -311,30 +318,3 @@ void FixSMDIntegrateUlsph::reset_dt() {
 	dtf = 0.5 * update->dt * force->ftm2v;
 }
 
-/* ---------------------------------------------------------------------- */
-
-int FixSMDIntegrateUlsph::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
-	int i, j, m;
-	double *radius = atom->radius;
-
-	m = 0;
-	for (i = 0; i < n; i++) {
-		j = list[i];
-		buf[m++] = radius[j];
-	}
-	return m;
-}
-
-/* ---------------------------------------------------------------------- */
-
-void FixSMDIntegrateUlsph::unpack_forward_comm(int n, int first, double *buf) {
-	int i, m, last;
-	double *radius = atom->radius;
-
-	//printf("in FixSMDIntegrateUlsph::unpack_forward_comm\n");
-	m = 0;
-	last = first + n;
-	for (i = first; i < last; i++) {
-		radius[i] = buf[m++];
-	}
-}

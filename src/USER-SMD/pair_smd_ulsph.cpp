@@ -137,13 +137,69 @@ void PairULSPH::PreCompute_DensitySummation() {
 	double h, irad, hsq, rSq, wf;
 	Vector3d dx, xi, xj;
 
+	// set up neighbor list variables
+	inum = list->inum;
+	ilist = list->ilist;
+	numneigh = list->numneigh;
+	firstneigh = list->firstneigh;
+
 	// zero accumulators
 	for (i = 0; i < nlocal; i++) {
 		rho[i] = 0.0;
+		//shepardWeight[i] = 0.0;
 	}
 
-	//printf("... doing density summation\n");
+	/*
+	 * STAGE 1: obtain Shepard weights
+	 */
 
+//	for (i = 0; i < nlocal; i++) {
+//		itype = type[i];
+//		if (setflag[itype][itype] == 1) {
+//			// self-contribution to Shepard weight
+//			h = 2.0 * radius[i];
+//			hsq = h * h;
+//			Poly6Kernel(hsq, h, 0.0, domain->dimension, wf);
+//			shepardWeight[i] = wf;
+//		}
+//	}
+//
+//	for (ii = 0; ii < inum; ii++) {
+//		i = ilist[ii];
+//		itype = type[i];
+//		jlist = firstneigh[i];
+//		jnum = numneigh[i];
+//		irad = radius[i];
+//
+//		xi << x[i][0], x[i][1], x[i][2];
+//
+//		for (jj = 0; jj < jnum; jj++) {
+//			j = jlist[jj];
+//			j &= NEIGHMASK;
+//
+//			xj << x[j][0], x[j][1], x[j][2];
+//			dx = xj - xi;
+//			rSq = dx.squaredNorm();
+//			h = irad + radius[j];
+//			hsq = h * h;
+//			if (rSq < hsq) {
+//
+//				jtype = type[j];
+//				Poly6Kernel(hsq, h, rSq, domain->dimension, wf);
+//
+//				if (setflag[itype][itype] == 1) {
+//					shepardWeight[i] += wf;
+//				}
+//
+//				if (j < nlocal) {
+//					if (setflag[jtype][jtype] == 1) {
+//						shepardWeight[j] += wf;
+//					}
+//				}
+//			} // end if check distance
+//		} // end loop over j
+//	} // end loop over i
+	//printf("... doing density summation\n");
 	/*
 	 * only recompute mass density if density summation is used.
 	 * otherwise, change in mass density is time-integrated
@@ -155,16 +211,10 @@ void PairULSPH::PreCompute_DensitySummation() {
 			h = 2.0 * radius[i];
 			hsq = h * h;
 			Poly6Kernel(hsq, h, 0.0, domain->dimension, wf);
-			rho[i] = wf * rmass[i];
+			rho[i] = wf * rmass[i]; // / shepardWeight[i];
 			//printf("SIC to rho is %f\n", rho[i]);
 		}
 	}
-
-	// set up neighbor list variables
-	inum = list->inum;
-	ilist = list->ilist;
-	numneigh = list->numneigh;
-	firstneigh = list->firstneigh;
 
 	for (ii = 0; ii < inum; ii++) {
 		i = ilist[ii];
@@ -190,17 +240,17 @@ void PairULSPH::PreCompute_DensitySummation() {
 				Poly6Kernel(hsq, h, rSq, domain->dimension, wf);
 
 				if (setflag[itype][itype] == 1) {
-					rho[i] += wf * rmass[j];
+					rho[i] += wf * rmass[j]; // / shepardWeight[i];
 				}
 
 				if (j < nlocal) {
 					if (setflag[jtype][jtype] == 1) {
-						rho[j] += wf * rmass[i];
+						rho[j] += wf * rmass[i]; // / shepardWeight[j];
 					}
 				}
-			}
-		} // end if check distance
-	} // end loop over j
+			} // end if check distance
+		} // end loop over j
+	} // end loop over i
 }
 
 /* ----------------------------------------------------------------------
@@ -504,7 +554,16 @@ void PairULSPH::compute(int eflag, int vflag) {
 	if (density_summation) {
 		//printf("dens summ\n");
 		PreCompute_DensitySummation();
+
+		for (i = 0; i < nlocal; i++) { //compute volumes from rho
+			itype = type[i];
+			if (setflag[itype][itype]) {
+				vfrac[i] = rmass[i] / rho[i];
+			}
+		}
+
 	}
+
 	if (velocity_gradient) {
 		PairULSPH::PreCompute(); // get velocity gradient and kernel gradient correction
 	}
@@ -513,23 +572,16 @@ void PairULSPH::compute(int eflag, int vflag) {
 	 * now we either have rho recomputed from scratch, or we know the volumetric strain increment.
 	 */
 
-	if (velocity_gradient) {
-		for (i = 0; i < nlocal; i++) {
-			itype = type[i];
-			if (setflag[itype][itype]) {
-				D = 0.5 * (L[i] + L[i].transpose());
-				double vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
-				vfrac[i] += vol_increment;
-			}
-		}
-	} else {
-		for (i = 0; i < nlocal; i++) {
-			itype = type[i];
-			if (setflag[itype][itype]) {
-				vfrac[i] = rmass[i] / rho[i];
-			}
-		}
-	}
+//	if (!density_summation) {
+//		for (i = 0; i < nlocal; i++) {
+//			itype = type[i];
+//			if (setflag[itype][itype]) {
+//				D = 0.5 * (L[i] + L[i].transpose());
+//				double vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
+//				vfrac[i] += vol_increment;
+//			}
+//		}
+//	}
 
 	PairULSPH::AssembleStressTensor();
 
@@ -759,7 +811,8 @@ void PairULSPH::AssembleStressTensor() {
 	double G_eff = 0.0; // effective shear modulus
 	double K_eff; // effective bulk modulus
 	double M, p_wave_speed;
-	double rho, shear_rate;
+	double rho, shear_rate, effectiveViscosity;
+	Matrix3d deltaStressDev;
 
 	dtCFL = 1.0e22;
 	eye.setIdentity();
@@ -860,11 +913,22 @@ void PairULSPH::AssembleStressTensor() {
 				tlsph_stress[i][5] = newStressDeviator(2, 2);
 
 				// estimate effective shear modulus for time step stability
-				G_eff = effective_shear_modulus(d_dev, StressRateDevJaumann, itype);
+				deltaStressDev = oldStressDeviator - newStressDeviator;
+				G_eff = effective_shear_modulus(d_dev, deltaStressDev, dt, itype);
 
 			} // end if (strength[itype] != NONE)
 
 			if (viscosity[itype] != NONE) {
+
+				oldStressDeviator(0, 0) = tlsph_stress[i][0];
+				oldStressDeviator(0, 1) = tlsph_stress[i][1];
+				oldStressDeviator(0, 2) = tlsph_stress[i][2];
+				oldStressDeviator(1, 1) = tlsph_stress[i][3];
+				oldStressDeviator(1, 2) = tlsph_stress[i][4];
+				oldStressDeviator(2, 2) = tlsph_stress[i][5];
+				oldStressDeviator(1, 0) = oldStressDeviator(0, 1);
+				oldStressDeviator(2, 0) = oldStressDeviator(0, 2);
+				oldStressDeviator(2, 1) = oldStressDeviator(1, 2);
 
 				D = 0.5 * (L[i] + L[i].transpose());
 				d_dev = Deviator(D);
@@ -874,18 +938,23 @@ void PairULSPH::AssembleStressTensor() {
 					error->one(FLERR, "unknown viscosity model.");
 					break;
 				case VISCOSITY_NEWTON:
-					newStressDeviator = 2.0 * Lookup[VISCOSITY_MU][itype] * d_dev; // newton original
-
-					//shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1)); // 2d
-					//newStressDeviator = 2.0 * PA6_280C(shear_rate) * d_dev;
-					//printf("here :)\n");
-
-
+					//effectiveViscosity = Lookup[VISCOSITY_MU][itype];
+					shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1)); // 2d
+					effectiveViscosity = PA6_280C(shear_rate);
+					newStressDeviator = 2.0 * effectiveViscosity * d_dev; // newton original
 					break;
-
 				}
 
-				G_eff = 0.0;
+				tlsph_stress[i][0] = newStressDeviator(0, 0);
+				tlsph_stress[i][1] = newStressDeviator(0, 1);
+				tlsph_stress[i][2] = newStressDeviator(0, 2);
+				tlsph_stress[i][3] = newStressDeviator(1, 1);
+				tlsph_stress[i][4] = newStressDeviator(1, 2);
+				tlsph_stress[i][5] = newStressDeviator(2, 2);
+
+				// estimate effective shear modulus for time step stability
+				deltaStressDev = oldStressDeviator - newStressDeviator;
+				G_eff = effective_shear_modulus(d_dev, deltaStressDev, dt, itype);
 
 			} // end if (viscosity[itype] != NONE)
 
@@ -901,6 +970,7 @@ void PairULSPH::AssembleStressTensor() {
 			if (gradient_correction_flag) {
 				stressTensor[i] = stressTensor[i] * K[i];
 			}
+
 			/*
 			 * stable timestep based on speed-of-sound
 			 */
@@ -908,17 +978,14 @@ void PairULSPH::AssembleStressTensor() {
 			M = K_eff + 4.0 * G_eff / 3.0;
 			p_wave_speed = sqrt(M / rho);
 			effm[i] = G_eff;
+			dtCFL = MIN(2 * radius[i] / p_wave_speed, dtCFL);
 
-<<<<<<< HEAD
-			dtCFL = MIN(radius[i] / p_wave_speed, dtCFL);
-
-			// viscous time step
-			dtCFL = MIN(radius[i] * radius[i] * rho / Lookup[VISCOSITY_MU][itype], dtCFL);
-=======
-			dtCFL = MIN( 2.0 * radius[i] / p_wave_speed, dtCFL);
->>>>>>> branch 'master' of https://github.com/ganzenmg/lammps_current.git
-
-		} // end if (setflag[itype][itype] == 1)
+			/*
+			 * stable timestep based on viscosity
+			 */
+			//dtCFL = MIN(4 * radius[i] * radius[i] * rho / effectiveViscosity, dtCFL);
+		}
+		// end if (setflag[itype][itype] == 1)
 	} // end loop over nlocal
 
 //printf("stable timestep = %g\n", 0.1 * hMin * MaxBulkVelocity);
@@ -960,7 +1027,7 @@ void PairULSPH::allocate() {
  ------------------------------------------------------------------------- */
 
 void PairULSPH::settings(int narg, char **arg) {
-	if (narg != 2) {
+	if (narg != 3) {
 		printf("narg = %d\n", narg);
 		error->all(FLERR, "Illegal number of arguments for pair_style ulsph");
 	}
@@ -972,22 +1039,37 @@ void PairULSPH::settings(int narg, char **arg) {
 
 	if (strcmp(arg[0], "*DENSITY_SUMMATION") == 0) {
 		density_summation = true;
+		density_continuity = false;
 		if (comm->me == 0)
 			printf("... density summation active\n");
-	} else if (strcmp(arg[0], "*VELOCITY_GRADIENT") == 0) {
-		velocity_gradient = true;
+	} else if (strcmp(arg[0], "*DENSITY_CONTINUITY") == 0) {
+		density_continuity = true;
+		density_summation = false;
 		if (comm->me == 0)
-			printf("... density continuity and computation of velocity gradient active\n");
+			printf("... density continuity active\n");
 	} else {
 		error->all(FLERR,
-				"Illegal settings keyword for first keyword of pair style ulsph. Must be either *DENSITY_SUMMATION or *VELOCITY_GRADIENT");
+				"Illegal settings keyword for first keyword of pair style ulsph. Must be either *DENSITY_SUMMATION or *DENSITY_CONTINUITY");
 	}
 
-	if (strcmp(arg[1], "*YES_GRADIENT_CORRECTION") == 0) {
+	if (strcmp(arg[1], "*VELOCITY_GRADIENT") == 0) {
+		velocity_gradient = true;
+		if (comm->me == 0)
+			printf("... computation of velocity gradients active\n");
+	} else if (strcmp(arg[1], "*NO_VELOCITY_GRADIENT") == 0) {
+		velocity_gradient = false;
+		if (comm->me == 0)
+			printf("... computation of velocity gradients NOT active\n");
+	} else {
+		error->all(FLERR,
+				"Illegal settings keyword for first keyword of pair style ulsph. Must be either *VELOCITY_GRADIENT or *NO_VELOCITY_GRADIENT");
+	}
+
+	if (strcmp(arg[2], "*GRADIENT_CORRECTION") == 0) {
 		gradient_correction_flag = true;
 		if (comm->me == 0)
 			printf("... first order correction of kernel gradients is active\n");
-	} else if (strcmp(arg[1], "*NO_GRADIENT_CORRECTION") == 0) {
+	} else if (strcmp(arg[2], "*NO_GRADIENT_CORRECTION") == 0) {
 		gradient_correction_flag = false;
 		if (comm->me == 0)
 			printf("... first order correction of kernel gradients is NOT active\n");
@@ -995,10 +1077,10 @@ void PairULSPH::settings(int narg, char **arg) {
 		error->all(FLERR, "Illegal settings keyword for pair style ulsph");
 	}
 
-	// error check
-	if ((gradient_correction_flag == true) && (density_summation)) {
-		error->all(FLERR, "Cannot use *DENSITY_SUMMATION in combination with *YES_GRADIENT_CORRECTION");
-	}
+// error check
+	//if ((gradient_correction_flag == true) && (density_summation)) {
+	//	error->all(FLERR, "Cannot use *DENSITY_SUMMATION in combination with *YES_GRADIENT_CORRECTION");
+	//}
 
 	if (comm->me == 0)
 		printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
@@ -1482,7 +1564,7 @@ int PairULSPH::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, in
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	int i, j, m;
 
-	//printf("packing comm\n");
+//printf("packing comm\n");
 	m = 0;
 	for (i = 0; i < n; i++) {
 		j = list[i];
@@ -1578,54 +1660,30 @@ void *PairULSPH::extract(const char *str, int &i) {
  compute effective shear modulus by dividing rate of deviatoric stress with rate of shear deformation
  ------------------------------------------------------------------------- */
 
-double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d stressRateDev, const int itype) {
+double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype) {
 	double G_eff; // effective shear modulus, see Pronto 2d eq. 3.4.7
-	double shear_rate_sq;
+	double deltaStressDevSum, shearRateSq, strain_increment;
 
 	if (domain->dimension == 3) {
-		G_eff = 0.5
-				* (stressRateDev(0, 1) / (d_dev(0, 1) + 1.0e-16) + stressRateDev(0, 2) / (d_dev(0, 2) + 1.0e-16)
-						+ stressRateDev(1, 2) / (d_dev(1, 2) + 1.0e-16));
-		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2);
+		error->all(FLERR, "not yet imp");
 	} else {
-		G_eff = 0.5 * (stressRateDev(0, 1) / (d_dev(0, 1) + 1.0e-16));
-		shear_rate_sq = d_dev(0, 1) * d_dev(0, 1);
+
+		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1);
+		shearRateSq = d_dev(0, 1) * d_dev(0, 1);
 	}
 
-	if (G_eff < 0.0) {
-		G_eff = 0.0;
-	}
+	strain_increment = dt * dt * shearRateSq;
 
-//	if (G_eff < 0.0) {
-//		printf("G_eff = %g\n", G_eff);
-//	}
-
-	/*
-	 * Take care of the special case that the shear rate is very small, in which case the effective
-	 * sheear modulus cannot be compute accurately.
-	 *
-	 * In the case of a viscosity model, we fall back to effective shear modulus = zero.
-	 *
-	 * In the case of a material strength model, fall back to effective shear modulus = initial shear modulus
-	 */
-
-
-	if (shear_rate_sq < 0.1) {
+	if (strain_increment > 1.0e-12) {
+		G_eff = 0.5 * sqrt(deltaStressDevSum / strain_increment);
+	} else {
 		if (strength[itype] != NONE) {
 			G_eff = Lookup[SHEAR_MODULUS][itype];
-			printf("hury\n");
 		} else {
 			G_eff = 0.0;
 		}
-
-<<<<<<< HEAD
-=======
-		if (strength[itype] != NONE) {
-			G_eff = Lookup[SHEAR_MODULUS][itype];
-		}
->>>>>>> branch 'master' of https://github.com/ganzenmg/lammps_current.git
 	}
-	//printf("initial M=%f, current M=%f\n", M0, M);
+
 	return G_eff;
 
 }
