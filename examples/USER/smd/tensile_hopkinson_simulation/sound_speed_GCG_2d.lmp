@@ -1,0 +1,103 @@
+# 2D Peridynamic simulation; volumetric strain
+
+# *** choose material parameter here ***
+variable         l0 equal 1.0e0 # lattice spacing in mm
+variable         h equal 1.05*${l0} # horizon based on lattic spacing, plus fudge factor
+variable         K equal 10.0 # bulk modulus
+variable         visc equal 1.0
+variable         smax equal 1.0
+variable         syield equal 10.0
+variable         G0 equal 0.0
+
+# PROPERTIES OF STRIKER, INPUT, OUTPUT BAR
+variable         lstr equal 1000 # length striker bar [mm]
+variable         lin equal 7000 # length input bar: from end of striker to end of input bar [mm]
+variable         lsamp equal 7100 # length sample
+variable         lout equal 10100 # length input bar [mm]
+variable         rho_bar equal 2.7e-6 # input, output and striker bars mass density
+variable         rho_sample equal 20.7e-6 # mass density of sample
+
+# location of strain gauges
+variable         loc_dms1 equal round(4000/${l0}) # index of particle which represents dms 1
+variable         loc_dms_samp equal round(7050/${l0}) # index of particle which represents dms
+#
+# *** now derive quantities from above variables ***
+variable         ltot equal ${lin}+${lout}+${lstr}+${lsamp} # total length of Hopkinson bar
+variable         vol_one equal ${l0} # volume per particle
+variable         skin equal 1*${l0} # Verlet skin distance
+
+newton           on
+units            si
+dimension        2
+boundary         f f p
+atom_style       smd
+atom_modify      map array
+comm_modify      vel yes
+neighbor         ${skin} bin
+lattice          sq ${l0}
+# Create simulation domain
+region           box block 0 ${lout} -0.1 0.1 -0.1 0.1 units box
+create_box       1 box
+# Create Hopkinson bar particles 
+create_atoms     1 box
+variable         tmp equal vol
+
+# SET PROPERTIES
+set             group all diameter ${h}
+set             group all volume ${vol_one}
+set             group all smd_contact_radius 0.1
+set             group all mol 1000
+
+region          reg_str block 0 ${lstr} EDGE EDGE EDGE EDGE units box # region where striker is located
+region          reg_in block ${lstr} ${lin} EDGE EDGE EDGE EDGE units box # region where input bar is located
+region          reg_samp block ${lin} ${lsamp} EDGE EDGE EDGE EDGE units box # region where sample is located
+region          reg_out block ${lsamp} ${lout} EDGE EDGE EDGE EDGE units box # region where output bar is located
+
+set             region reg_str    smd_mass_density ${rho_bar}
+set             region reg_in     smd_mass_density ${rho_bar}
+set             region reg_samp   smd_mass_density ${rho_sample}
+set             region reg_out    smd_mass_density ${rho_bar}
+
+# INTERACTION
+pair_style      smd/peri_pmb
+pair_coeff      * * ${K} ${smax} ${G0} ${visc} ${syield}
+
+# Compute damage for each particle 
+compute         peatom all pe/atom
+compute         stress all stress/atom NULL #virial
+variable        stressx atom c_stress[1]
+variable        sig_dms1 equal -v_stressx[${loc_dms1}]
+variable        sig_dms_samp equal -v_stressx[${loc_dms_samp}]
+
+# dump output
+dump            D1 all custom 100 dump.LAMMPS id type x y z c_stress[1] vx mass
+dump_modify     D1 first yes
+                
+neighbor        ${l0} bin
+
+run             0
+
+group            striker region reg_str
+velocity         striker set -0.001 0 0 units box
+
+thermo_style    custom step pe ke etotal v_sig_dms1
+thermo          100
+
+fix             nve_fix all nve
+
+# estimate number of timesteps to run
+variable        nu equal 1./3.
+variable        E equal ${K}
+variable        E2d equal ${E}/(1.0-${nu}^2)
+variable        cl equal sqrt(${E2d}/${rho_bar})
+variable        dt equal 0.25*${l0}/${cl}
+print           "predicted soundspeed: ${cl}, timestep: ${dt}"
+timestep        ${dt}
+variable        deltat equal (bound(all,xmax)-bound(all,xmin))/${cl}
+variable        nrun equal round(0.9*${deltat}/dt)
+
+variable        t equal time
+fix             output_fix all print 100 "$t ${sig_dms1} ${sig_dms_samp}" file dms_signal.dat screen no
+
+run             ${nrun}
+

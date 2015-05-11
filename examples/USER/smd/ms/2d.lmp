@@ -1,0 +1,153 @@
+# directly impose shear using moving boundaries
+# 
+#
+#processors      4 1 1
+variable        width equal 1.040000
+variable        height equal 1.351000
+variable        l0 equal 0.02
+variable        yadd equal 0.1
+variable        rho equal 2700.0e-9
+variable        h equal 2.01*${l0}
+variable        Kresin equal 1 # bulk modulus of resin
+variable        Kfib equal 1 # bulk modulus of fibres
+variable        smax equal 1.0
+variable        artvisc equal 1
+# ----
+variable        cr equal 0.5*${l0}
+variable        c0 equal sqrt(${Kresin}/${rho})
+variable        dt equal 0.5*0.125*${h}/${c0}
+print           "sound speed is ${c0}, CFL timestep is ${dt}"
+variable        skin equal ${h} # Verlet list range
+
+variable        y00 equal 0.0-${yadd}
+variable        y01 equal ${height}+${yadd}
+
+variable        y0 equal ${y00}+0.05
+variable        y1 equal ${y01}-0.05
+
+
+units		si
+dimension       2
+boundary        p s p
+atom_style      smd
+neighbor        ${skin} bin
+neigh_modify    every 10 delay 0 check yes
+comm_modify     vel yes
+newton          off
+atom_modify     map array
+
+region          box block 0 ${width} ${y00} ${y01} -0.001 0.001 units box
+create_box      2 box
+lattice         sq ${l0}
+create_atoms    1 box
+
+include         set_fiber_regions.lmp
+
+group           resin type 1
+group           fibres type 2
+
+variable        vol_one equal ly*lx/count(all)
+set             group all volume ${vol_one}
+set             group all diameter ${h}
+set             group all smd_contact_radius ${cr}
+set             group all smd_mass_density ${rho}
+
+variable        ymax equal yhi
+
+
+region          top block EDGE EDGE ${y1} EDGE EDGE EDGE  units box
+region          bot block EDGE EDGE EDGE ${y0} EDGE EDGE  units box
+group           top region top
+group           bot region bot
+
+#### PAIR STYLE 1: ONLY FLUID, FOR VERIFYING VISCOSITY
+###pair_style      ulsph *VELOCITY_GRADIENT *YES_GRADIENT_CORRECTION
+#### 1.0e-4 entspricht 100 Pa s
+####                           rho.ref c0    Q1  Cv  hg
+###pair_coeff      1 1 *COMMON ${rho}  ${c0} ${artvisc} 0.0 0.0 &
+###		    *EOS_TAIT 7 &
+###	            *VISCOSITY_NEWTON 1.0e-4 &
+###		    *END
+###pair_coeff      2 2 *COMMON ${rho}  ${c0} ${artvisc} 0.0 0.0 &
+###		    *EOS_TAIT 7 &
+###                    *VISCOSITY_NEWTON 1.0e-4 &
+###		    *END
+###pair_coeff      1 2 *CROSS *END
+
+pair_style      hybrid/overlay ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION smd/peri_pmb
+#                           rho.ref c0          Q1         Cv  hg
+pair_coeff      1 1 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 10.0 &
+		    *EOS_TAIT 7 &
+		    *VISCOSITY_NEWTON 1.0e-4 &
+		    *END
+pair_coeff      2 2 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 0.0 &
+		    *EOS_TAIT 7 &
+		    *VISCOSITY_NEWTON 1.0e-4 &
+		    *END
+pair_coeff      1 2 ulsph *CROSS *END
+pair_coeff      2 2 smd/peri_pmb ${Kfib} ${smax} -1 0 1.0
+
+compute         eint all smd/internal_energy
+compute         rho all smd/rho
+compute         alleint all reduce sum c_eint
+variable        etot equal ke+c_alleint
+compute         contact_radius all smd/contact_radius
+compute         fS all smd/ulsph_stress
+compute         aS all stress/atom NULL pair
+compute         nn all smd/ulsph_num_neighs
+
+variable        devxy atom c_aS[4]-0.5*(c_aS[1]+c_aS[2]) # deviatot of atomistic stress
+compute         edot all smd/ulsph_strain_rate
+compute         strain all smd/ulsph_strain
+compute         peatom all pe/atom
+compute         effm all smd/ulsph_effm
+
+balance         1.0 shift xy 20 1.0
+
+
+
+
+variable        dumpFreq equal 1000
+dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z & 
+                fx fy vx vy c_eint &
+                c_contact_radius mol c_rho &
+                c_fS[1] c_fS[2] c_fS[4] &
+                c_aS[1] c_aS[2] c_aS[4] c_edot[4] c_nn c_peatom radius &
+                c_strain[1] c_strain[2] c_strain[4] c_effm
+dump_modify     dump_id first yes
+
+variable         shear_rate equal 10.0
+variable         delta_y equal ${y1}-${y0}
+variable         shear_velocity equal ${shear_rate}*${delta_y}
+variable         shear_velocity_half equal 0.5*${shear_velocity}
+
+variable         volfrac equal count(fibres)*${vol_one}/(lx*${delta_y}) # fibre volume fraction in relevant (sheared) domain
+print            "fiber volume fraction is ${volfrac}"
+
+velocity        all ramp vx -${shear_velocity_half} ${shear_velocity_half} y ${y0} ${y1} units box
+fix              ffix1 top setforce 0 0 0
+fix              ffix2 bot setforce 0 0 0
+
+
+# evaluate viscosity from force and shear velocity
+variable         area equal lx # area for computing shear stress. As we are in 2d, this is simply the horizontal box dimension
+variable         visc_direct equal f_ffix2[1]/(${area}*${shear_rate})
+
+fix             dtfix all smd/adjust_dt 0.2
+fix             integration_fix all smd/integrate_ulsph
+variable        gamma equal 180.0*atan(f_dtfix*${shear_velocity}/${delta_y})/PI
+thermo          100
+#                    0    1  2  3      4         5  6           7
+#thermo_style    custom step ke pe v_etot c_alleint dt c_edotxy_av v_visc_direct
+thermo_style    custom step dt f_dtfix v_gamma v_visc_direct
+thermo_modify   lost ignore
+
+
+variable        t equal f_dtfix
+fix             extra all print 100 "$t ${gamma} ${visc_direct}" file time_viscosity.dat screen no
+
+run             240000
+
+
+
+

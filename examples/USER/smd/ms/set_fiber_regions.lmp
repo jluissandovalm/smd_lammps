@@ -1,0 +1,108 @@
+region fiber sphere 0.000000 0.112583 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 0
+region fiber delete
+region fiber sphere 0.130000 0.337750 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 1
+region fiber delete
+region fiber sphere 0.000000 0.562917 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 2
+region fiber delete
+region fiber sphere 0.130000 0.788083 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 3
+region fiber delete
+region fiber sphere 0.000000 1.013250 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 4
+region fiber delete
+region fiber sphere 0.130000 1.238416 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 5
+region fiber delete
+region fiber sphere 0.260000 0.112583 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 6
+region fiber delete
+region fiber sphere 0.390000 0.337750 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 7
+region fiber delete
+region fiber sphere 0.260000 0.562917 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 8
+region fiber delete
+region fiber sphere 0.390000 0.788083 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 9
+region fiber delete
+region fiber sphere 0.260000 1.013250 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 10
+region fiber delete
+region fiber sphere 0.390000 1.238416 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 11
+region fiber delete
+region fiber sphere 0.520000 0.112583 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 12
+region fiber delete
+region fiber sphere 0.650000 0.337750 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 13
+region fiber delete
+region fiber sphere 0.520000 0.562917 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 14
+region fiber delete
+region fiber sphere 0.650000 0.788083 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 15
+region fiber delete
+region fiber sphere 0.520000 1.013250 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 16
+region fiber delete
+region fiber sphere 0.650000 1.238416 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 17
+region fiber delete
+region fiber sphere 0.780000 0.112583 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 18
+region fiber delete
+region fiber sphere 0.910000 0.337750 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 19
+region fiber delete
+region fiber sphere 0.780000 0.562917 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 20
+region fiber delete
+region fiber sphere 0.910000 0.788083 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 21
+region fiber delete
+region fiber sphere 0.780000 1.013250 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 22
+region fiber delete
+region fiber sphere 0.910000 1.238416 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 23
+region fiber delete
+region fiber sphere 1.040000 0.112583 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 0
+region fiber delete
+region fiber sphere 1.040000 0.562917 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 2
+region fiber delete
+region fiber sphere 1.040000 1.013250 0.000000 0.100000 units box
+set region fiber type 2
+set region fiber mol 4
+region fiber delete
