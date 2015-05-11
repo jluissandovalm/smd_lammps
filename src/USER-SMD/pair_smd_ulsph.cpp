@@ -357,7 +357,7 @@ void PairULSPH::PreCompute() {
 
 				// deformation gradient F in Eulerian frame
 				du = dx - dx0;
-				Ftmp = du * g.transpose();
+				Ftmp = dv * g.transpose();
 				F[i] += jvol * Ftmp;
 
 				if (j < nlocal) {
@@ -582,7 +582,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 //			}
 //		}
 //	}
-
 	PairULSPH::AssembleStressTensor();
 
 	/*
@@ -686,46 +685,9 @@ void PairULSPH::compute(int eflag, int vflag) {
 				visc_magnitude = 0.5 * (Q1[itype] + Q1[jtype]) * c_ij * mu_ij / rho_ij;
 				f_visc = -rmass[i] * rmass[j] * visc_magnitude * g;
 
-				/*
-				 * hourglass treatment
-				 */
+				if ((Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] > 0.0) && (Lookup[HOURGLASS_CONTROL_AMPLITUDE][jtype] > 0.0)) {
+					f_hg = ComputeHourglassForce(i, itype, j, jtype, dv, dx, g, c_ij, mu_ij, rho_ij);
 
-				dx0(0) = x0[j][0] - x0[i][0];
-				dx0(1) = x0[j][1] - x0[i][1];
-				dx0(2) = x0[j][2] - x0[i][2];
-				r0Sq = dx0.squaredNorm();
-				du = dx - dx0;
-
-				if ((Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] > 0.0) && (Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] > 0.0)) {
-					du_est = 0.5 * (F[i] + F[j]) * dx;
-					gamma = du_est - du;
-
-//					if (du.norm() > 0.01) {
-//						printf("du_est is %f %f %f\n", du_est(0), du_est(1), du_est(2));
-//						printf("du actual is %f %f %f\n", du(0), du(1), du(2));
-//						printf("gamma is %f %f %f\n", gamma(0), gamma(1), gamma(2));
-//						printf("--------------\n");
-//					}
-
-					gamma_dot_dx = gamma.dot(dx) / (r + 0.1 * h); // project hourglass error vector onto normalized pair distance vector
-
-					if (rSq - r0Sq < 0) { // compression mode, we limit hourglass correction force
-						LimitDoubleMagnitude(gamma_dot_dx, 0.005 * r);
-					} else {
-						LimitDoubleMagnitude(gamma_dot_dx, 0.5 * r);
-					}
-
-					if (MAX(plastic_strain[i], plastic_strain[j]) > 1.0e-4) {
-						hg_mag = Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] * Lookup[YIELD_STRENGTH][itype] * gamma_dot_dx
-								/ (rSq + 0.01 * h * h); // hg_mag has dimensions [Pa m^(-1)]
-					} else {
-						hg_mag = Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] * Lookup[BULK_MODULUS][itype] * gamma_dot_dx
-								/ (rSq + 0.01 * h * h); // hg_mag has dimensions [Pa m^(-1)]
-					}
-
-					hg_mag *= -ivol * jvol * wf; // hg_mag has dimensions [J*m^(-1)] = [N]
-					f_hg = (hg_mag / (r + 0.01 * h)) * dx;
-					//printf("hg_mag = %f\n", hg_mag);
 				} else {
 					f_hg.setZero();
 				}
@@ -1685,5 +1647,35 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d d
 	}
 
 	return G_eff;
+
+}
+
+/* ----------------------------------------------------------------------
+ hourglass force for updated Lagrangian SPH
+ input: particles indices i, j, particle types ityep, jtype
+ ------------------------------------------------------------------------- */
+
+Vector3d PairULSPH::ComputeHourglassForce(const int i, const int itype, const int j, const int jtype, const Vector3d dv,
+		const Vector3d xij, const Vector3d g, const double c_ij, const double mu_ij, const double rho_ij) {
+
+	double *rmass = atom->rmass;
+	Vector3d dv_est, f_hg;
+	double visc_magnitude;
+
+	dv_est = -0.5 * (F[i] + F[j]) * xij;
+	double hurz = dv_est.dot(dv) / (dv_est.norm() * dv.norm() + 1.0e-16);
+	if (hurz < 0.0) {
+
+		visc_magnitude = 0.5 * (Q1[itype] + Q1[jtype]) * c_ij * mu_ij / rho_ij;
+		f_hg = -rmass[i] * rmass[j] * visc_magnitude * g;
+//		printf(" f_hg   = %f %f %f\n", f_hg(0), f_hg(1), f_hg(2));
+//		printf("\nnegative\n");
+//		printf(" dv_est = %f %f %f\n", dv_est(0), dv_est(1), dv_est(2));
+//		printf(" dv     = %f %f %f\n", dv(0), dv(1), dv(2));
+	} else {
+		f_hg.setZero();
+	}
+
+	return f_hg;
 
 }

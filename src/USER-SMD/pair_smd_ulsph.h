@@ -59,6 +59,9 @@ public:
 	void PreCompute_DensitySummation();
 	double effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype);
 
+	Vector3d ComputeHourglassForce(const int i, const int itype, const int j, const int jtype, const Vector3d dv,
+			const Vector3d xij, const Vector3d g, const double c_ij, const double mu_ij, const double rho_ij);
+
 protected:
 
 	double *c0_type; // reference speed of sound defined per particle type
