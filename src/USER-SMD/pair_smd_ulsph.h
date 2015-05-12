@@ -68,6 +68,7 @@ protected:
 	double *rho0; // reference mass density per type
 	double *Q1; // linear artificial viscosity coeff
 	int *eos, *viscosity, *strength; // eos and strength material models
+	bool **artificial_pressure; // true/false: use Monaghan's artificial pressure correction?
 
 	double *onerad_dynamic, *onerad_frozen;
 	double *maxrad_dynamic, *maxrad_frozen;

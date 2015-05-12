@@ -5,7 +5,7 @@ variable        rho equal 1000 # mass density of water dropt
 variable        h equal 0.08 # characteristic smoothing length, used here only for determining 
 variable        K equal 2e5 # bulk modulus of the fluid
 variable        hg equal 0 # hourglass control coefficient, must be zero for fluids.
-variable        art_visc equal 0.0 # We can set the artificial viscosity to zero if physical visc. is present.
+variable        art_visc equal 1.0 # We can set the artificial viscosity to zero if physical visc. is present.
 # ----
 variable        c0 equal sqrt(${K}/${rho}) # speed of sound
 variable        dt equal 0.125*${h}/${c0} # CFL estimate for the stable timestep
@@ -25,9 +25,10 @@ newton          off
 read_data       disc_adjusted.data # read a geometry.
 
 # this is an updated-Lagrangian pair style with Tait EOS and physical viscosity.
-pair_style      ulsph *VELOCITY_GRADIENT *YES_GRADIENT_CORRECTION
+pair_style      ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION
 #                           density speed_of_sound artif.visc.  heat.capacity hourglass
 pair_coeff      1 1 *COMMON ${rho}  ${c0}          ${art_visc}  0             ${hg} &
+		*ARTIFICIAL_PRESSURE &
 		*VISCOSITY_NEWTON 100.0 &
 		*EOS_TAIT 7 &
 	        *END
@@ -63,8 +64,8 @@ thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
 #
 # Case 1: ellipsoidal deformation: angular momentum should stay zero if kernel gradient correction
 # is used, and drift away from zero if no kernel gradient is used
- velocity        all ramp vx  -0.1 0.1 y -1.0 1.0 units box
- velocity        all ramp vy  -0.1 0.1 x  1.0 -1.0 units box
+# velocity        all ramp vx  -0.1 0.1 y -1.0 1.0 units box
+# velocity        all ramp vy  -0.1 0.1 x  1.0 -1.0 units box
 #
 # Case 2: rotation around center of mass:  angular momentum should stay constant if kernel gradient correction
 # is used, and drift if no kernel gradient is used
@@ -72,8 +73,8 @@ thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
 #velocity        all ramp vy    -1 1 y -1.0 1.0 units box
 #
 # Case 3: make the drop of water hit a rigid wall. Angular momentum is never conserved.
-#run            1000
-#velocity       all set 0 -1 0 units box
-#fix             ywall all wall/reflect ylo -1.0
+run            1000
+velocity       all set 0 -1 0 units box
+fix             ywall all wall/reflect ylo -1.0
 
 run 10000

@@ -76,7 +76,7 @@ group           bot region bot
 
 pair_style      hybrid/overlay ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION smd/peri_pmb
 #                           rho.ref c0          Q1         Cv  hg
-pair_coeff      1 1 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 10.0 &
+pair_coeff      1 1 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 00.0 &
 		    *EOS_TAIT 7 &
 		    *VISCOSITY_NEWTON 1.0e-4 &
 		    *END

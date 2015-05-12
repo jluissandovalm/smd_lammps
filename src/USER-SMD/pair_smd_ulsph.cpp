@@ -77,6 +77,7 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	F = NULL;
 	rho = NULL;
 	effm = NULL;
+	artificial_pressure = NULL;
 
 	artificial_stress_flag = false; // turn off artificial stress correction by default
 	velocity_gradient_required = false; // turn off computation of velocity gradient by default
@@ -98,6 +99,7 @@ PairULSPH::~PairULSPH() {
 		memory->destroy(strength);
 		memory->destroy(c0_type);
 		memory->destroy(Lookup);
+		memory->destroy(artificial_pressure);
 
 		delete[] onerad_dynamic;
 		delete[] onerad_frozen;
@@ -378,7 +380,7 @@ void PairULSPH::PreCompute() {
 	 */
 
 	bool Shape_Matrix_Inversion_Success = false;
-	SelfAdjointEigenSolver < Matrix2d > es;
+	SelfAdjointEigenSolver<Matrix2d> es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	for (i = 0; i < nlocal; i++) {
@@ -478,6 +480,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	double *de = atom->de;
 	double *rmass = atom->rmass;
 	double *radius = atom->radius;
+	double *contact_radius = atom->contact_radius;
 	double *plastic_strain = atom->eff_plastic_strain;
 	double **atom_data9 = atom->smd_data_9;
 
@@ -492,13 +495,14 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Vector3d fi, fj, dx, dv, f_stress, g, vinti, vintj, dvint;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
 	Vector3d gamma, f_hg, dx0, du_est, du;
-	double gamma_dot_dx, hg_mag;
+	double gamma_dot_dx, hg_mag, r_ref, weight, pi, pj, p;
 
 	// double ini_dist, weight;
 	// double *contact_radius = atom->contact_radius;
-	Matrix3d S, D, V;
+	Matrix3d S, D, V, eye;
+	eye.setIdentity();
 	// int k;
-	SelfAdjointEigenSolver < Matrix3d > es;
+	SelfAdjointEigenSolver<Matrix3d> es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -652,7 +656,18 @@ void PairULSPH::compute(int eflag, int vflag) {
 
 				delVdotDelR = dx.dot(dv) / (r + 0.1 * h); // project relative velocity onto unit particle distance vector [m/s]
 
-				f_stress = -ivol * jvol * (stressTensor[i] + stressTensor[j]) * g; // DO NOT TOUCH SIGN
+				S = stressTensor[i] + stressTensor[j];
+
+				if (artificial_pressure[itype][jtype]) {
+					p = S.trace();
+					if (p > 0.0) { // we are in tension
+						r_ref = contact_radius[i] + contact_radius[j];
+						weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(r_ref, h);
+						S += 0.1 * weight * p * eye;
+					}
+				}
+
+				f_stress = -ivol * jvol * S * g; // DO NOT TOUCH SIGN
 
 				/*
 				 * artificial stress to control tensile instability
@@ -963,9 +978,6 @@ void PairULSPH::allocate() {
 	int n = atom->ntypes;
 
 	memory->create(setflag, n + 1, n + 1, "pair:setflag");
-	for (int i = 1; i <= n; i++)
-		for (int j = i; j <= n; j++)
-			setflag[i][j] = 0;
 
 	memory->create(Q1, n + 1, "pair:Q1");
 	memory->create(rho0, n + 1, "pair:Q2");
@@ -973,9 +985,22 @@ void PairULSPH::allocate() {
 	memory->create(eos, n + 1, "pair:eosmodel");
 	memory->create(viscosity, n + 1, "pair:viscositymodel");
 	memory->create(strength, n + 1, "pair:strengthmodel");
+
 	memory->create(Lookup, MAX_KEY_VALUE, n + 1, "pair:LookupTable");
 
+	memory->create(artificial_pressure, n + 1, n + 1, "pair:artificial_pressue");
 	memory->create(cutsq, n + 1, n + 1, "pair:cutsq");		// always needs to be allocated, even with granular neighborlist
+
+	/*
+	 * initialize arrays to default values
+	 */
+
+	for (int i = 1; i <= n; i++) {
+		for (int j = i; j <= n; j++) {
+			artificial_pressure[i][j] = false;
+			setflag[i][j] = 0;
+		}
+	}
 
 	onerad_dynamic = new double[n + 1];
 	onerad_frozen = new double[n + 1];
@@ -1377,6 +1402,39 @@ void PairULSPH::coeff(int narg, char **arg) {
 				}
 			} // end *STRENGTH_VISCOSITY_NEWTON
 
+			else if (strcmp(arg[ioffset], "*ARTIFICIAL_PRESSURE") == 0) {
+
+				/*
+				 * use Monaghan's artificial pressure to prevent particle clumping
+				 */
+
+				t = string("*");
+				iNextKwd = -1;
+				for (iarg = ioffset + 1; iarg < narg; iarg++) {
+					s = string(arg[iarg]);
+					if (s.compare(0, t.length(), t) == 0) {
+						iNextKwd = iarg;
+						break;
+					}
+				}
+
+				if (iNextKwd < 0) {
+					sprintf(str, "no *KEYWORD terminates *ARTIFICIAL_PRESSURE");
+					error->all(FLERR, str);
+				}
+
+				if (iNextKwd - ioffset != 0 + 1) {
+					sprintf(str, "expected 0 arguments following *ARTIFICIAL_PRESSURE but got %d\n", iNextKwd - ioffset - 1);
+					error->all(FLERR, str);
+				}
+
+				artificial_pressure[itype][itype] = true;
+
+				if (comm->me == 0) {
+					printf(FORMAT2, "Artificial Pressure is enabled.");
+				}
+			} // end *ARTIFICIAL_PRESSURE
+
 			else {
 				sprintf(str, "unknown *KEYWORD: %s", arg[ioffset]);
 				error->all(FLERR, str);
@@ -1436,6 +1494,11 @@ void PairULSPH::coeff(int narg, char **arg) {
 
 		setflag[itype][jtype] = 1;
 		setflag[jtype][itype] = 1;
+
+		if ((artificial_pressure[itype][itype]) && (artificial_pressure[jtype][jtype])) {
+			artificial_pressure[itype][jtype] = true;
+			artificial_pressure[jtype][itype] = true;
+		}
 
 		if (comm->me == 0) {
 			printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
