@@ -48,7 +48,7 @@ timestep        ${dt} # set an initial estimate for the zero-th timestep
 fix             dtfix all smd/adjust_dt 0.1 # dynamically adjust stable timestep
 fix             integration_fix all smd/integrate_ulsph xsph #adjust_radius 1.2 # actual integration for equations of motion
 
-variable        dumpFreq equal 100
+variable        dumpFreq equal 10
 dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
                 fx fy fz vx vy vz c_eint &
                 c_contact_radius c_nn mol c_rho c_S[1] c_S[2] c_S[4] radius &
