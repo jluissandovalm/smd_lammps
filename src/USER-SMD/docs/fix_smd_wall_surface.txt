@@ -1,0 +1,51 @@
+"LAMMPS WWW Site"_lws - "LAMMPS Documentation"_ld - "LAMMPS Commands"_lc :c
+
+:link(lws,http://lammps.sandia.gov)
+:link(ld,Manual.html)
+:link(lc,Section_commands.html#comm)
+
+:line
+
+fix smd/wall_surface command :h3
+
+[Syntax:]
+
+fix ID group-ID smd/wall_surface arg type mol-ID :pre
+
+ID, group-ID are documented in "fix"_fix.html command :ulb,l
+smd/wall_surface = style name of this fix command :l
+arg = {file} :l
+   {file} = file name of a triangular mesh in stl format :pre
+type = particle type to be given to the particles of the generated lattice :l
+mod-ID = molecule-ID which has to be bigger than :l
+       
+:ule
+
+[Examples:]
+
+fix 1 all smd/wall_surface geometry.stl 2 65535
+fix stl_surf all smd/wall_surface tool.stl 2 65535 :pre
+
+[Description:]
+
+This fix creates a lattice of particles using an stl-file of a triangulated mesh. A particle
+will be placed at the center of every trianlular element of the mesh. The vertices of every
+triangle will be also stored together with the corresponding particle.   
+
+See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
+
+[Restart, fix_modify, output, run start/stop, minimize info:]
+
+Currently, no part of USER-SMD supports restarting nor minimization. This fix has no outputs.
+
+[Restrictions:]
+
+This fix is part of the USER-SMD package.  It is only enabled if
+LAMMPS was built with that package. See the "Making LAMMPS"_Section_start.html#start_3
+section for more info.
+
+[Related commands:]
+
+"smd/triangle_mesh_vertices"_compute_smd_triangle_mesh_vertices.html, "smd/move_tri_surf"_fix_smd_move_triangulated_surface.html
+
+[Default:] none
