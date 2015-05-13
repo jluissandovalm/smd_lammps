@@ -917,7 +917,7 @@ void PairULSPH::AssembleStressTensor() {
 				case VISCOSITY_NEWTON:
 					//effectiveViscosity = Lookup[VISCOSITY_MU][itype];
 					shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1)); // 2d
-					effectiveViscosity = PA6_280C(shear_rate);
+					effectiveViscosity = PA6_270C(shear_rate);
 					newStressDeviator = 2.0 * effectiveViscosity * d_dev; // newton original
 					break;
 				}
