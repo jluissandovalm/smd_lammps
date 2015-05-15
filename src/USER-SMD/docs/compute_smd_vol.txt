@@ -28,12 +28,12 @@ LAMMPS.
 
 [Output info:]
 
-This compute calculates a per-atom vector, which can be accessed by
-any command that uses per-atom values from a compute as input.  See
+This compute calculates a per-particle vector, which can be accessed by
+any command that uses per-particle values from a compute as input.  See
 "How-to discussions, section 6.15"_Section_howto.html#howto_15
 for an overview of LAMMPS output options.
 
-The per-atom vector values will be given in "units"_units.html of distance power three.
+The per-particle vector values will be given in "units"_units.html of distance power three.
 
 [Restrictions:]
 

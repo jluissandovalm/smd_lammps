@@ -37,25 +37,25 @@ tool_fix tool smd/move_tri_surf *ROTATE 0 0 0 5 2 1 :pre
 
 [Description:]
 
-This fix Perform updates of position and velocity for atoms in
+This fix Perform updates of position and velocity for particles in
 the group each timestep using the specified settings or formulas,
-without regard to forces on the atoms. This can be useful for
+without regard to forces on the particles. This can be useful for
 implemanting Dirichlet Boundary Conditions (DBC).
 
-The {*LINEAR} style moves atoms with the specified constant velocity
-vector V = (Vx,Vy,Vz). This style also sets the velocity of each atom
+The {*LINEAR} style moves particles with the specified constant velocity
+vector V = (Vx,Vy,Vz). This style also sets the velocity of each particle
 to V = (Vx,Vy,Vz). 
 
-The {*WIGGLE} style moves atoms in an oscillatory fashion.
+The {*WIGGLE} style moves particles in an oscillatory fashion.
 Particles are moved along (vx, vy, vz) with constant velocity until a
 displacement of max_travel is reached. Then, the velocity vector is
 reversed. This process is repeated.
 
 The {*ROTATE} style rotates particles around a rotation axis R = (Rx,Ry,Rz) that
 goes through a point P = (Px,Py,Pz). The period of the rotation is also
-specified. This style also sets the velocity of each atom to (omega cross
+specified. This style also sets the velocity of each particle to (omega cross
 Rperp) where omega is its angular velocity around the rotation axis and
-Rperp is a perpendicular vector from the rotation axis to the atom.
+Rperp is a perpendicular vector from the rotation axis to the particle.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 

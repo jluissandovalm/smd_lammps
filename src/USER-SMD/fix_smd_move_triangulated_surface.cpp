@@ -216,9 +216,19 @@ FixSMDMoveTriSurf::FixSMDMoveTriSurf(LAMMPS *lmp, int narg, char **arg) :
 	// set comm sizes needed by this fix
 	comm_forward = 12;
 
-	atom->add_callback(0);
+	//atom->add_callback(0);
+	//atom->add_callback(1);
 
 	time_integrate = 1;
+}
+
+/* ---------------------------------------------------------------------- */
+
+FixSMDMoveTriSurf::~FixSMDMoveTriSurf()
+{
+  // unregister callbacks to this fix from Atom class
+  //atom->delete_callback(id,0);
+  //atom->delete_callback(id,1);
 }
 
 /* ---------------------------------------------------------------------- */
