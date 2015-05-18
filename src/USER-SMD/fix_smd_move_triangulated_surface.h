@@ -41,6 +41,7 @@ namespace LAMMPS_NS {
 class FixSMDMoveTriSurf: public Fix {
 public:
 	FixSMDMoveTriSurf(class LAMMPS *, int, char **);
+	~FixSMDMoveTriSurf();
 	int setmask();
 	virtual void init();
 	virtual void initial_integrate(int);

@@ -1,0 +1,59 @@
+"LAMMPS WWW Site"_lws - "LAMMPS Documentation"_ld - "LAMMPS Commands"_lc :c
+
+:link(lws,http://lammps.sandia.gov)
+:link(ld,Manual.html)
+:link(lc,Section_commands.html#comm)
+
+:line
+
+fix smd/integrate_ulsph command :h3
+
+[Syntax:]
+
+fix ID group-ID smd/integrate_ulsph keyword :pre
+
+ID, group-ID are documented in "fix"_fix.html command
+smd/integrate_ulsph = style name of this fix command
+zero or more keyword/value pairs may be appended
+
+keyword = xsph or adjust_radius or limit_velocity
+
+xsph
+adjust_radius values = adjust_radius_factor min_nn max_nn
+      adjust_radius_factor = factor which scale the smooth/kernel radius
+      min_nn = minimum number of neighbors
+      max_nn = maximum number of neighbors
+limit_velocity values = max_velocity
+      max_velocity = maximum allowed velocity.  
+   
+
+Note to self: remove updte / reinit keywords from this fix.
+
+[Examples:]
+
+fix 1 all smd/integrate_ulsph adjust_radius 0.5 25 50 :pre
+fix 1 all smd/integrate_ulsph xsph limit_velocity 1000 :pre
+
+[Description:]
+
+The fix sets the method for the time integration as updated-lagrange SPH.
+See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
+
+The {xsph} keyword activates Monaghan's XSPH time integration approach, where a particle is moved according to the average velocity within its neighborhood.
+If the xsph keyword is absent, the usual Velocity-Verlet time intergration approach is employed.  
+
+[Restart, fix_modify, output, run start/stop, minimize info:]
+
+Currently, no part of USER-SMD supports restarting nor minimization. This fix has no outputs.
+
+[Restrictions:]
+
+This fix is part of the USER-SMD package.  It is only enabled if
+LAMMPS was built with that package. See the "Making LAMMPS"_Section_start.html#start_3
+section for more info.
+
+[Related commands:]
+
+
+
+[Default:] none
