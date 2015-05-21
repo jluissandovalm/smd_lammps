@@ -44,13 +44,13 @@
 #include "smd_material_models.h"
 #include "smd_math.h"
 #include "smd_kernels.h"
-//#include "smd_pa6_viscosity.h"
+#include "smd_pa6_viscosity.h"
 
 using namespace SMD_Kernels;
 using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
-//using namespace SMD_PA6_VISCOSITY;
+using namespace SMD_PA6_VISCOSITY;
 
 #include <Eigen/SVD>
 #include <Eigen/Eigen>
@@ -915,9 +915,12 @@ void PairULSPH::AssembleStressTensor() {
 					error->one(FLERR, "unknown viscosity model.");
 					break;
 				case VISCOSITY_NEWTON:
-					effectiveViscosity = Lookup[VISCOSITY_MU][itype];
-					shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1)); // 2d
-					//effectiveViscosity = PA6_270C(shear_rate);
+					//effectiveViscosity = Lookup[VISCOSITY_MU][itype];
+					shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2)); // 3d
+					effectiveViscosity = PA6_270C(shear_rate);
+					if (effectiveViscosity > 178.062e-6) {
+						printf("effective visc is %f\n", effectiveViscosity);
+					}
 					newStressDeviator = 2.0 * effectiveViscosity * d_dev; // newton original
 					break;
 				}
@@ -1690,9 +1693,9 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d d
 	double deltaStressDevSum, shearRateSq, strain_increment;
 
 	if (domain->dimension == 3) {
-		error->all(FLERR, "not yet imp");
+		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1) + deltaStressDev(0, 2) * deltaStressDev(0, 2) + deltaStressDev(1, 2) * deltaStressDev(1, 2);
+		shearRateSq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2);
 	} else {
-
 		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1);
 		shearRateSq = d_dev(0, 1) * d_dev(0, 1);
 	}
