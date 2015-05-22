@@ -1,0 +1,138 @@
+# # # # # # # # # #   E X A M P L E:   3 D   B A R   U N D E R   T E N S I O N   # # # # # # # # # #
+
+# DEFINE GENERAL CONSTANTS
+# - material properties
+  variable        rho        equal 2700.0e-9          # density
+  variable        E          equal 10                 # Young's modulus
+  variable        nu         equal 0.3                # Poisson ratio
+  variable        sigy       equal 0.1                # yield stress
+# - simulation parameters
+  variable        h          equal 0.82               # kernel radius
+  variable        skin       equal 0.5*${h}           # Verlet list range
+  variable        cont_stiff equal 1*${E}             # Contact stiffness (not used)
+  variable        c0         equal sqrt(${E}/${rho})  # speed of sound
+  variable        dt         equal 0.125*${h}/${c0}   # stimated time step
+  print           "sound speed is ${c0}, CFL timestep is ${dt}"
+  variable        hg         equal 50.0               # hourglass control factor
+
+# LAMMPS SETUPS
+  units           si                                  # consistent units
+  dimension       3
+  processors      4 1 1                               # split of the box across plrocessors
+  boundary        s s s                               # sort of simulation box limits
+  atom_style      smd
+  comm_style      brick                               # partition of the box
+  neighbor        ${skin} bin                         # offset
+  neigh_modify    every 100 delay 0 check no          # only build neighbor list if particle has...
+  comm_modify     vel yes
+  newton          off
+  atom_modify     map array
+
+####################################################################################################
+# ------------------------------------- P R E  P R O C E S S ------------------------------------- #
+####################################################################################################
+
+# CREATE A SIMULATION BOX AND A LATTICE OF PARTICLES FROM A DATA FILE
+  read_data       h4_adjusted.data
+
+# DEFINE GROUPS OF PARTICLES TO APPLY BOUNDARY CONDITIONS (BC)
+# - Compute box bounds
+  variable        xmin      equal bound(all,xmin)
+  variable        xminplus  equal ${xmin}+15.0
+  variable        xmax      equal bound(all,xmax)
+  variable        xmaxminus equal ${xmax}-15.0
+  variable        L0        equal ${xmaxminus}-${xminplus}
+# - Define regions and groups
+  region          bot   block  EDGE         ${xminplus}  EDGE EDGE  EDGE EDGE units box
+  region          top   block  ${xmaxminus}        EDGE  EDGE EDGE  EDGE EDGE units box
+  group           top   region top  # group of particles at the top
+  group           bot   region bot  # group of particles at the bottom
+  group           tlsph union  all  # group of all particles
+
+# BALANCE NUMBER OF PARTICLES PER PROCESSOR
+  balance         1.0 shift x 20 1.0  # split box along X
+
+# SPECIFY A PAIR-STYLE
+  pair_style      hybrid/overlay tlsph smd/hertz 0.5 # activate TLSPH and contact
+
+# SPECIFY PAIR INTERACTIONS
+# - Define a material for TLSPH ------ <rh0>  <E>  <nu> <Q1> <Q2> <hg> <Cp> -
+  pair_coeff      1 1 tlsph *COMMON   ${rho} ${E} ${nu}  1.0  0.0 50.0  1.0 &
+                            *LINEAR_PLASTICITY           ${sigy} 0.0        &
+                            *FAILURE_MAX_PLASTIC_STRAIN  0.5                &
+                            *EOS_LINEAR                                     &
+                            *END
+# - Define a potential for  contact
+  pair_coeff      1 1 smd/hertz ${E}
+
+# APPLY DIRICHLET BOUDARY CONDITIONS (DBC)
+  variable        vel  equal  10.00                    # velocity
+  velocity        top set  ${vel} 0 0 sum no units box # set velocity at the top
+  fix             force_fix1 top setforce 0 0 0        # set accel/force to zero
+  velocity        bot set -${vel} 0 0 sum no units box # set velocity at the bottom
+  fix             force_fix2 bot setforce 0 0 0        # set accel/force to zero
+
+# DEFINE TIME INTEGRATION
+  timestep        ${dt}
+  variable        maxdist  equal  ${h}
+  fix             dtfix            all  smd/adjust_dt 0.1
+  fix             integration_fix  all  smd/integrate_tlsph
+
+####################################################################################################
+# ------------------------------------ P O S T  P R O C E S S ------------------------------------ #
+####################################################################################################
+
+# SPECIFY PER-PARTICLE DATA TO BE COMPUTED
+  compute         E              all smd/tlsph_strain
+  compute         P              all smd/plastic_strain
+  compute         Pdot           all smd/plastic_strain_rate
+  compute         S              all smd/tlsph_stress
+  compute         d              all smd/damage
+  compute         nn             all smd/tlsph_num_neighs
+  compute         contact_radius all smd/contact_radius
+  compute         eint           all smd/internal_energy
+  compute         alleint        all reduce sum c_eint
+  #compute         sumforce BCL reduce sum fx
+  compute         vol            all smd/volume
+  compute         dt_atom        all smd/tlsph_dt
+  variable        etot  equal  ke+c_alleint+pe
+
+# CALCULATE REACTION FORCES, STRAIN, STRESS
+  variable        force   equal  0.5*(f_force_fix2[1]-f_force_fix1[1])
+  variable        disp    equal  2.0*${vel}*f_dtfix
+  variable        strain  equal  v_disp/${L0}
+  variable        stress  equal  v_force/150
+  fix             output_fix all print 10 "${disp} ${force} ${strain} ${stress}" &
+                                 file  force_displacement.dat                    &
+                                 screen no
+
+# CREATE A 'dump' FILE FOR VISUALIZATION
+  variable        nrun equal round((10.0/${vel})/${dt})
+  print           "running for ${nrun} steps"
+  variable        dumpFreq equal round(${nrun}/1000)
+  dump            dump_id all custom 10 dump.LAMMPS id type        &
+                  x y z  vx vy vz  fx fy fz  mass  c_vol  c_nn     &
+                  c_E[1] c_E[2] c_E[3] c_E[4] c_E[5] c_E[6]        &
+                  c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_S[7] &
+                  c_P c_Pdot c_eint c_d c_contact_radius c_dt_atom 
+  dump_modify     dump_id first yes
+
+####################################################################################################
+# ---------------------------------- R U N  S I M U L A T I O N ---------------------------------- #
+####################################################################################################
+
+# PRINT SIMULATION STATUS ON SHELL
+  thermo          100
+  thermo_style    custom step ke pe v_etot c_alleint dt f_dtfix time f_dtfix[1] c_vol
+  #thermo_style    custom step f_dtfix f_dtfix[1] dt time
+  #thermo_modify   lost ignore
+
+# START SIMULATION
+  run             8800 #${nrun} # Perform simulation for 'nrun' time steps
+
+# REVERSE DCB
+  velocity        top set -${vel} 0 0 sum no units box
+  velocity        bot set  ${vel} 0 0 sum no units box
+
+# RESTART SIMULATION
+  run             18000 # Perform simulation for 'nrun' time steps

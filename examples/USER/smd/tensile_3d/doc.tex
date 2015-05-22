@@ -1,0 +1,108 @@
+\documentclass[11pt]{scrartcl}
+
+\usepackage{ucs}
+\usepackage[utf8x]{inputenc}
+\usepackage[english]{}
+\usepackage{amsmath,amssymb,amstext}
+\usepackage{graphicx}
+\usepackage[automark]{scrpage2}
+
+\usepackage{color}
+
+\pagestyle{scrheadings}
+
+\begin{document}
+
+\subsection{Bar under Tension}
+\label{sec:3d-bar}
+
+This example serves to illustrate the features of Total-Lagrange SPH in comparison to traditional FEM
+simulations. A 3D bar is elongated by pulling it apart from both sides at high velocity. Due to
+Poisson's deformation ratio the cross section in the middle of the bar is reduced and a non-homogeneous
+stress distribution is developed. Since a damage model is implemented, after reaching certain
+deformation, failure will occure at the middle of the bar. Following the failure, the DCB will be
+reversed till a huge deformation by compression is reached. The LAMMPS input script is found within
+the directory \texttt{examples/USER/smd/tensile\_3}.
+\\\\
+The script creates a lattice of particles, applies corresponding boundary conditions, invokes the
+required pair style and time integration fix 'commnads' and specify output quanities for the
+visualization. Below it is explained how the simulation setup is organized in the scrip.
+
+\subsubsection{Load Geometry}
+The script starts difining a series of constant parameters relevant for the simulation. A consistent
+unit system is used by means of the command 'units si', in this case millimeters (mm), milliseconds
+(ms), kilograms (kg) and Giga Pascal (GPa).The geometrical discretization is performed using an FEM
+tool and stored in a data file which is read in the script to generate the lattice of particles and
+intialize the simulation box and particle properties. The SPH kernel radius is set to a value,such that
+approximately 25 neighbor particles interact with each particle. Figure \ref{fig:fem-sph} shows the
+SPH discretization and the original FEM mesh from wich the lattice of particles was based on.
+\footnote{Discretisation using LS-PrePost}
+\\
+\begin{figure}[htbp]
+  \begin{minipage}{0.495\textwidth}
+    \centering
+      \includegraphics[width=1.00\textwidth]{./frontview_fem.jpg}
+      \includegraphics[width=1.00\textwidth]{./isoview_fem.jpg}
+  \end{minipage}\hfill
+  \begin{minipage}{0.495\textwidth}
+    \centering
+      \includegraphics[width=1.00\textwidth]{./frontview_sph.png}
+      \includegraphics[width=1.00\textwidth]{./isoview_sph.png}
+  \end{minipage}
+  \caption{FEM discretization (left) and SPH discretization (right).}
+  \label{fig:fem-sph}
+\end{figure}
+
+To apply the boundary conditions, an independent group is defined for each end of bar to contain the
+last layer of particles. Another group is defined including the whole lattice of particles, to specify
+the pair style which determines the material model.
+
+\subsubsection{Material properties and pair style/interaction}
+A Total-Lagrange \texttt{pair\_style tlsph} is used to modell the material. The \texttt{*COMMON}
+keword is mandatory and defines general material properties, which are not related with a specific
+material model, such as density, Young's modulus and Poisson's ratio. The parameters Q1 and Q2 define
+the linear and cuadratic parts of the artificial viscosity. The parameter hg defines the 'hourglas
+control' coefficient, which should be chosen between 10 and 100. The Cp parameter, which defines the
+specific heat capacity, is the last argument of this keyword. The second keyword activates a linear
+materal model, Hookean linear elasticity, for the deviatoric part of the deformation and the third
+keyword activates an EOS for the volumetric deformation.
+\\\\
+Additionally, a herzian potential pair interaction (\texttt{smd/herz}) is defined to avoid
+interpenetration during the compression once failure is alredy occured. To allow both pair
+interactions (tlsph and contact) the \texttt{pair\_style} command has to be used with the style
+\texttt{hybrid/overlay}.
+
+\subsubsection{Set Boundary conditions}
+Dirichlet Boundary Conditions (DCB) are applied by setting the acceleration/force to zero on the groups
+mention above and a constant velocity with the same magnitude on both groups but opposite direcctions.
+
+\subsubsection{Time Integration}
+The \texttt{fix smd/integrate\_tlsph} command is used to define the time integration of the system.
+A stable time increment for the explicit Velocity-Verlet integration approach used by \texttt{LAMMPS}
+is computed with the \texttt{fix smd/adjust\_dt} command and applying a factor of 0.1 recomended for
+SPH algorithms.
+
+\subsubsection{Post-process and outputs}
+\texttt{compute} and \texttt{variable} commands are used to calculate relevant quantities which will
+be written in the \texttt{dump} file, such as stresses, strains and deformation gradient, just to
+mention some examples.
+
+\textcolor{green}{Green Text.}
+\color{black}
+
+\begin{figure}
+  \begin{center}
+    \includegraphics[width=0.8\textwidth]{isoview_fem.jpg}
+    \includegraphics[width=0.8\textwidth]{dt_01_sph.png}
+  \caption{Plastic Strain}
+  \label{fig:plast-strain}
+  \end{center}
+\end{figure}
+
+\newpage
+
+In section \ref{sec:3d-bar} ...
+
+Discretization of the bar using exahedra finite elements..
+
+\end{document}

@@ -1,0 +1,153 @@
+# # # # # # # # # # # # #   E X A M P L E:   M A C H I N I N G   T O O L   # # # # # # # # # # # # #
+
+# SPECIFY PROCESSORS
+  processors 4 1 1
+
+# DEFINE GENERAL CONSTANTS
+# - Material properties
+  variable  rho               equal 1                     # mass density
+  variable  c0                equal 1                     # wave speed
+  variable  E                 equal 1*${c0}^2*${rho}      # actually bulk modulus
+  variable  nu                equal sqrt(0.09)            # poisson ratio
+  variable  mu                equal ${E}/(2*(1+${nu}))    # shear modulus
+  variable  bkM               equal ${E}/(3*(1-2*${nu}))  # bulk modulus
+  variable  sigy              equal 0.1*${E}              # plastic yield strength
+  variable  velx              equal 0.100*${c0}           # velocity X-dir
+  variable  vely              equal 0.000*${c0}           # velocity Y-dir
+  variable  velz              equal 0.000*${c0}           # velocity Z-dir
+# - Simulation Parameters
+  variable  h                 equal 0.52                  # SPH kernel diameter, from mesh.data file
+  variable  contact_stiffness equal 0.88*${E}             # contact force amplitude
+  variable  skin              equal ${h}                  # Verlet list range
+
+# SPECIFY LAMMPS SETUPS
+  units           si     # consisten unit system
+  dimension       3      # dimensions
+  boundary        f f f  # range x,y,z
+  atom_style      smd
+  comm_style      brick
+  neighbor        ${skin} bin
+  neigh_modify    every 5 delay 0 check yes exclude type 2 2 one 10000 page 100000
+  comm_modify     vel yes
+  newton          off
+  atom_modify     map hash sort 1000 5.0
+
+# CREATE A SIMULATION BOX AND A LATTICE OF PARTICLES FROM FILE
+  read_data       Block02_exa_adjusted.data
+
+# DEFINE A GROUP AND TYPE FOR THE LATTICE OF PARTICLES FROM FILE
+  group           tlsph type 1
+
+# CREATE GROUP OF PARTICLES TO APPLY THE BOUNDARY CONDITIONS (BC)
+  region          constraint block EDGE EDGE EDGE EDGE -1 1 units box
+  group           constraint region constraint 
+
+# LOAD A RIGID-BODY GEOMETRY (MACHINING TOOL)                    <type> <mol id>
+  fix             stl_surface_fix1 all smd/wall_surface Tool.stl     2    65535
+  run             1
+  group           tool type 2
+
+# PLACE TOOL AT STARTING POINT
+  #change_box      all boundary sm sm sm
+  timestep        1
+  fix             boundary_fix tool smd/move_tri_surf *LINEAR -10.1 6.8 7.8
+  run             1
+  unfix           boundary_fix
+
+# INITIALIZE PARTICLE MASS
+  set             group tlsph smd_mass_density ${rho} # mass = rho * volume
+
+# SPECIFY A PAIR-STYLE 
+  pair_style      hybrid/overlay tlsph *UPDATE_CONSTANT 0.2 smd/tri_surface 1.0
+
+# SPECIFY PAIR INTERACTIONS
+# - Interaction between particles type 1 (block)
+#   - Define a Material model ------ <rh0>  <E>  <nu> <Q1> <Q2> <HG> <Cp>
+  pair_coeff      1 1 tlsph *COMMON ${rho} ${E} ${nu}  1.0  0.0  10   1.0 &
+                            *LINEAR_PLASTICITY ${sigy}  0 &
+	              	    *EOS_LINEAR &
+                            *END
+# - Interaction between particles type 2 (tool)
+  pair_coeff      2 2 none
+# - Interaction between particles type 1 and 2 (block-tool contact)
+  pair_coeff      1 2 smd/tri_surface ${contact_stiffness}
+# -----------------------------------------------------------------------------
+
+# SPECIFY PER-PARTICLE DATA TO BE COMPUTED
+  compute         contact_radius all smd/contact_radius
+  compute         epl tlsph smd/plastic_strain
+  compute         S tlsph smd/tlsph_stress
+  compute         nn tlsph smd/tlsph_num_neighs
+  compute         tool_coord tool smd/triangle_vertices
+
+# DEFINE 'dump' FILE(S)
+# --------------------------------------------------------------------------
+  dump            dump_custom tlsph custom 25 particles.LAMMPS id type mol & 
+                  x               y               z                        &
+                  vx              vy              vz                       &
+                  c_nn            radius          c_contact_radius         &
+                  c_S[7]          c_epl    
+  dump_modify     dump_custom first yes
+# --------------------------------------------------------------------------
+  dump            tool_dump   tool  custom 25 tool.LAMMPS      id type mol &
+                  x               y               z                        &
+                  c_tool_coord[1] c_tool_coord[2] c_tool_coord[3]          &
+                  c_tool_coord[4] c_tool_coord[5] c_tool_coord[6]          &
+                  c_tool_coord[7] c_tool_coord[8] c_tool_coord[9]        
+  dump_modify     tool_dump first yes
+# --------------------------------------------------------------------------
+
+  run             1
+
+# PERFORM BALANCE OF PROCESSING LOAD
+  balance 1.0 shift x 5 1.1
+
+# DEFINE TIME INTEGRATION 
+  fix             dtfix tlsph smd/adjust_dt 0.1  # Estimate a stable dt
+  fix             integration_fix tlsph smd/integrate_tlsph # tlsph solver
+
+# APPLY DBC 
+# - Fix the Block at the bottom
+  fix             fix_name constraint setforce 0 0 0
+# - Move the tool
+  fix             tool_fix tool smd/move_tri_surf *LINEAR ${velx} ${vely} 0
+
+# PRINT PARAMETERS IN SHELL
+  thermo          25 
+  thermo_style    custom step time dt ke pe lx ly lz
+  thermo_modify   lost warn
+
+  run             18800
+ 
+# STOP TIME INTEGRATION
+  unfix           tool_fix
+  unfix           integration_fix
+  unfix           dtfix
+  
+# REPOSITIONING TOOL
+  timestep        1                                       # reset time step
+  fix             tool_fix tool smd/move_tri_surf *LINEAR   -0.5   3.5  0.5
+  run             1
+  run             0
+# -------------------------------------------------------------------------
+  fix             tool_fix tool smd/move_tri_surf *LINEAR  -51.0   0.0  0.0 
+  run             1
+  run             0
+# -------------------------------------------------------------------------
+  fix             tool_fix tool smd/move_tri_surf *LINEAR    0.0  -6.7 -0.5 
+  run             1
+  run             0
+  timestep        1.0e-8                                  # reset time step
+# -------------------------------------------------------------------------
+
+# RESTART COMPUTATION
+  fix             dtfix tool smd/adjust_dt 0.1
+  fix             integration_fix tlsph smd/integrate_tlsph
+
+# RESTART DCB
+# - Fix Block
+  fix             fix_name constraint setforce 0 0 0
+# - Move tool (cut)
+  fix             tool_fix tool smd/move_tri_surf *LINEAR ${velx} ${vely} 0
+
+  run             22000
