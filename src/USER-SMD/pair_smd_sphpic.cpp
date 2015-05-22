@@ -26,7 +26,7 @@
 #include "float.h"
 #include "stdlib.h"
 #include "string.h"
-#include "pair_smd_ulsph.h"
+#include "pair_smd_sphpic.h"
 #include "atom.h"
 #include "domain.h"
 #include "force.h"
@@ -45,6 +45,7 @@
 #include "smd_math.h"
 #include "smd_kernels.h"
 //#include "smd_pa6_viscosity.h"
+#include "smd_sparse.h"
 
 using namespace SMD_Kernels;
 using namespace std;
@@ -60,7 +61,7 @@ using namespace Eigen;
 #define FORMAT1 "%60s : %g\n"
 #define FORMAT2 "\n.............................. %s \n"
 
-PairULSPH::PairULSPH(LAMMPS *lmp) :
+PairSphPic::PairSphPic(LAMMPS *lmp) :
 		Pair(lmp) {
 
 	Q1 = NULL;
@@ -89,7 +90,7 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 
 /* ---------------------------------------------------------------------- */
 
-PairULSPH::~PairULSPH() {
+PairSphPic::~PairSphPic() {
 	if (allocated) {
 		//printf("... deallocating\n");
 		memory->destroy(Q1);
@@ -127,7 +128,7 @@ PairULSPH::~PairULSPH() {
  *
  ---------------------------------------------------------------------- */
 
-void PairULSPH::PreCompute_DensitySummation() {
+void PairSphPic::PreCompute_DensitySummation() {
 	double *radius = atom->radius;
 	double **x = atom->x;
 	double *rmass = atom->rmass;
@@ -262,7 +263,7 @@ void PairULSPH::PreCompute_DensitySummation() {
  *
  ---------------------------------------------------------------------- */
 
-void PairULSPH::PreCompute() {
+void PairSphPic::PreCompute() {
 	double **atom_data9 = atom->smd_data_9;
 	double *radius = atom->radius;
 	double **x = atom->x;
@@ -380,7 +381,7 @@ void PairULSPH::PreCompute() {
 	 */
 
 	bool Shape_Matrix_Inversion_Success = false;
-	SelfAdjointEigenSolver<Matrix2d> es;
+	SelfAdjointEigenSolver < Matrix2d > es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	for (i = 0; i < nlocal; i++) {
@@ -468,11 +469,156 @@ void PairULSPH::PreCompute() {
 
 }
 
+void PairSphPic::scatter() {
+
+	double *radius = atom->radius;
+	double **x = atom->x;
+	double **v = atom->vest;
+	int *type = atom->type;
+	int nlocal = atom->nlocal;
+	int i, itype;
+	int ixmin, ixmax, iymin, iymax;
+	int jx, jy;
+	double xmin, xmax, ymin, ymax, h;
+	Vector3d xi, xj, dx;
+
+	double s = 0.05;
+	double rSq, weight, hSq, norm;
+
+	std::map<triple, double> ShepardWeight;
+	std::map<triple, double> ipvx;
+	std::map<triple, double> ipvy;
+	std::map<triple, double> ipvz;
+	triple point;
+	map<triple, double>::iterator it;
+
+	for (i = 0; i < nlocal; i++) {
+		itype = type[i];
+		if (setflag[itype][itype]) {
+			xi << x[i][0], x[i][1], 0.0;
+			h = radius[i];
+			hSq = h * h;
+			// compute grid nodes within kernel range
+			xmin = x[i][0] - h;
+			xmax = x[i][0] + h;
+			ymin = x[i][1] - h;
+			ymax = x[i][1] + h;
+
+			ixmin = (int) (xmin / s);
+			ixmax = (int) (xmax / s);
+
+			iymin = (int) (ymin / s);
+			iymax = (int) (ymax / s);
+
+			//printf("x range: %f %f, ix range: %d %d\n", xmin, xmax, ixmin, ixmax);
+			//printf("iy range: %d %d\n", iymin, iymax);
+
+			for (jx = ixmin; jx < ixmax; jx++) {
+				for (jy = iymin; jy < iymax; jy++) {
+
+					xj(0) = s * jx;
+					xj(1) = s * jy;
+					xj(2) = 0.0;
+					dx = xj - xi;
+					rSq = dx.squaredNorm();
+
+					if (rSq < hSq) {
+
+						point.x = jx;
+						point.y = jy;
+						point.z = 0;
+
+						Poly6Kernel(hSq, h, rSq, domain->dimension, weight);
+
+						//printf("ix=%d, iy=%d\n", jx, jy);
+
+						ShepardWeight[point] += weight;
+						ipvx[point] += v[i][0] * weight;
+						ipvy[point] += v[i][1] * weight;
+						ipvz[point] += 0.0;
+					}
+				}
+
+			}
+
+		}
+
+	}
+
+	for (it = ShepardWeight.begin(); it != ShepardWeight.end(); it++) {
+		point = it->first;
+		ipvx[point] /= ShepardWeight[point];
+		ipvy[point] /= ShepardWeight[point];
+		//if (fabs(ipvy[point]) > 0.1) printf("point: %d %d %d, wshep=%f, vx=%f, wy=%f\n", point.x, point.y, point.z, ShepardWeight[point], ipvx[point], ipvy[point]);
+		//cout << it->second << endl;
+	}
+	//cout << "size of data is " << data.size() << endl << endl;;
+
+	// project interpolated velocities back to points!
+	for (i = 0; i < nlocal; i++) {
+		itype = type[i];
+		if (setflag[itype][itype]) {
+			xi << x[i][0], x[i][1], 0.0;
+			h = radius[i];
+			hSq = h * h;
+			// compute grid nodes within kernel range
+			xmin = x[i][0] - h;
+			xmax = x[i][0] + h;
+			ymin = x[i][1] - h;
+			ymax = x[i][1] + h;
+
+			ixmin = (int) (xmin / s);
+			ixmax = (int) (xmax / s);
+
+			iymin = (int) (ymin / s);
+			iymax = (int) (ymax / s);
+
+			v[i][0] = 0.0;
+			v[i][1] = 0.0;
+			v[i][2] = 0.0;
+			norm = 0.0;
+
+			for (jx = ixmin; jx < ixmax; jx++) {
+				for (jy = iymin; jy < iymax; jy++) {
+
+					xj(0) = s * jx;
+					xj(1) = s * jy;
+					xj(2) = 0.0;
+					dx = xj - xi;
+					rSq = dx.squaredNorm();
+
+					if (rSq < hSq) {
+
+						point.x = jx;
+						point.y = jy;
+						point.z = 0;
+
+						Poly6Kernel(hSq, h, rSq, domain->dimension, weight);
+
+						//printf("ix=%d, iy=%d\n", jx, jy);
+
+						v[i][0] += weight * ipvx[point];
+						v[i][1] += weight * ipvy[point];
+						norm += weight;
+
+					}
+				}
+			}
+
+			if (norm > 0.0) {
+				v[i][0] /= norm;
+				v[i][1] /= norm;
+			}
+		}
+
+	}
+
+}
+
 /* ---------------------------------------------------------------------- */
 
-void PairULSPH::compute(int eflag, int vflag) {
+void PairSphPic::compute(int eflag, int vflag) {
 	double **x = atom->x;
-	double **x0 = atom->x0;
 	double **v = atom->vest;
 	double **vint = atom->v; // Velocity-Verlet algorithm velocities
 	double **f = atom->f;
@@ -481,13 +627,12 @@ void PairULSPH::compute(int eflag, int vflag) {
 	double *rmass = atom->rmass;
 	double *radius = atom->radius;
 	double *contact_radius = atom->contact_radius;
-	double *plastic_strain = atom->eff_plastic_strain;
 	double **atom_data9 = atom->smd_data_9;
 
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int i, j, ii, jj, jnum, itype, jtype, iDim, inum;
-	double r, wf, wfd, h, rSq, r0Sq, ivol, jvol;
+	double r, wf, wfd, h, rSq, ivol, jvol;
 	double mu_ij, c_ij, rho_ij;
 	double delVdotDelR, visc_magnitude, deltaE;
 	int *ilist, *jlist, *numneigh;
@@ -495,14 +640,14 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Vector3d fi, fj, dx, dv, f_stress, g, vinti, vintj, dvint;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
 	Vector3d gamma, f_hg, dx0, du_est, du;
-	double gamma_dot_dx, hg_mag, r_ref, weight, pi, pj, p;
+	double r_ref, weight, p;
 
 	// double ini_dist, weight;
 	// double *contact_radius = atom->contact_radius;
 	Matrix3d S, D, V, eye;
 	eye.setIdentity();
 	// int k;
-	SelfAdjointEigenSolver<Matrix3d> es;
+	SelfAdjointEigenSolver < Matrix3d > es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -555,6 +700,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 		}
 	}
 
+	//scatter();
+
 	if (density_summation) {
 		//printf("dens summ\n");
 		PreCompute_DensitySummation();
@@ -569,8 +716,9 @@ void PairULSPH::compute(int eflag, int vflag) {
 	}
 
 	if (velocity_gradient) {
-		PairULSPH::PreCompute(); // get velocity gradient and kernel gradient correction
+		PairSphPic::PreCompute(); // get velocity gradient and kernel gradient correction
 	}
+
 
 	/*
 	 * now we either have rho recomputed from scratch, or we know the volumetric strain increment.
@@ -586,7 +734,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 //			}
 //		}
 //	}
-	PairULSPH::AssembleStressTensor();
+	PairSphPic::AssembleStressTensor();
 
 	/*
 	 * QUANTITIES ABOVE HAVE ONLY BEEN CALCULATED FOR NLOCAL PARTICLES.
@@ -768,7 +916,7 @@ void PairULSPH::compute(int eflag, int vflag) {
  Assemble total stress tensor with pressure, material sterength, and
  viscosity contributions.
  ------------------------------------------------------------------------- */
-void PairULSPH::AssembleStressTensor() {
+void PairSphPic::AssembleStressTensor() {
 	double *radius = atom->radius;
 	double *vfrac = atom->vfrac;
 	double *rmass = atom->rmass;
@@ -788,7 +936,7 @@ void PairULSPH::AssembleStressTensor() {
 	double G_eff = 0.0; // effective shear modulus
 	double K_eff; // effective bulk modulus
 	double M, p_wave_speed;
-	double rho, shear_rate, effectiveViscosity;
+	double rho, effectiveViscosity;
 	Matrix3d deltaStressDev;
 
 	dtCFL = 1.0e22;
@@ -975,7 +1123,7 @@ void PairULSPH::AssembleStressTensor() {
  allocate all arrays
  ------------------------------------------------------------------------- */
 
-void PairULSPH::allocate() {
+void PairSphPic::allocate() {
 
 	allocated = 1;
 	int n = atom->ntypes;
@@ -1016,7 +1164,7 @@ void PairULSPH::allocate() {
  global settings
  ------------------------------------------------------------------------- */
 
-void PairULSPH::settings(int narg, char **arg) {
+void PairSphPic::settings(int narg, char **arg) {
 	if (narg != 3) {
 		printf("narg = %d\n", narg);
 		error->all(FLERR, "Illegal number of arguments for pair_style ulsph");
@@ -1081,7 +1229,7 @@ void PairULSPH::settings(int narg, char **arg) {
  set coeffs for one or more type pairs
  ------------------------------------------------------------------------- */
 
-void PairULSPH::coeff(int narg, char **arg) {
+void PairSphPic::coeff(int narg, char **arg) {
 	int ioffset, iarg, iNextKwd, itype, jtype;
 	char str[128];
 	std::string s, t;
@@ -1514,7 +1662,7 @@ void PairULSPH::coeff(int narg, char **arg) {
  init for one type pair i,j and corresponding j,i
  ------------------------------------------------------------------------- */
 
-double PairULSPH::init_one(int i, int j) {
+double PairSphPic::init_one(int i, int j) {
 
 	if (!allocated)
 		allocate();
@@ -1536,7 +1684,7 @@ double PairULSPH::init_one(int i, int j) {
  init specific to this pair style
  ------------------------------------------------------------------------- */
 
-void PairULSPH::init_style() {
+void PairSphPic::init_style() {
 	int i;
 
 //printf(" in init style\n");
@@ -1568,7 +1716,7 @@ void PairULSPH::init_style() {
  optional granular history list
  ------------------------------------------------------------------------- */
 
-void PairULSPH::init_list(int id, NeighList *ptr) {
+void PairSphPic::init_list(int id, NeighList *ptr) {
 	if (id == 0)
 		list = ptr;
 }
@@ -1577,7 +1725,7 @@ void PairULSPH::init_list(int id, NeighList *ptr) {
  memory usage of local atom-based arrays
  ------------------------------------------------------------------------- */
 
-double PairULSPH::memory_usage() {
+double PairSphPic::memory_usage() {
 
 //printf("in memory usage\n");
 
@@ -1587,7 +1735,7 @@ double PairULSPH::memory_usage() {
 
 /* ---------------------------------------------------------------------- */
 
-int PairULSPH::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
+int PairSphPic::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
 	double *vfrac = atom->vfrac;
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	int i, j, m;
@@ -1623,7 +1771,7 @@ int PairULSPH::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, in
 
 /* ---------------------------------------------------------------------- */
 
-void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
+void PairSphPic::unpack_forward_comm(int n, int first, double *buf) {
 	double *vfrac = atom->vfrac;
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	int i, m, last;
@@ -1662,7 +1810,7 @@ void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
  * EXTRACT
  */
 
-void *PairULSPH::extract(const char *str, int &i) {
+void *PairSphPic::extract(const char *str, int &i) {
 //printf("in extract\n");
 	if (strcmp(str, "smd/ulsph/smoothVel_ptr") == 0) {
 		return (void *) smoothVel;
@@ -1688,12 +1836,13 @@ void *PairULSPH::extract(const char *str, int &i) {
  compute effective shear modulus by dividing rate of deviatoric stress with rate of shear deformation
  ------------------------------------------------------------------------- */
 
-double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype) {
+double PairSphPic::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype) {
 	double G_eff; // effective shear modulus, see Pronto 2d eq. 3.4.7
 	double deltaStressDevSum, shearRateSq, strain_increment;
 
 	if (domain->dimension == 3) {
-		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1) + deltaStressDev(0, 2) * deltaStressDev(0, 2) + deltaStressDev(1, 2) * deltaStressDev(1, 2);
+		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1) + deltaStressDev(0, 2) * deltaStressDev(0, 2)
+				+ deltaStressDev(1, 2) * deltaStressDev(1, 2);
 		shearRateSq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2);
 	} else {
 		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1);
@@ -1721,7 +1870,7 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d d
  input: particles indices i, j, particle types ityep, jtype
  ------------------------------------------------------------------------- */
 
-Vector3d PairULSPH::ComputeHourglassForce(const int i, const int itype, const int j, const int jtype, const Vector3d dv,
+Vector3d PairSphPic::ComputeHourglassForce(const int i, const int itype, const int j, const int jtype, const Vector3d dv,
 		const Vector3d xij, const Vector3d g, const double c_ij, const double mu_ij, const double rho_ij) {
 
 	double *rmass = atom->rmass;
