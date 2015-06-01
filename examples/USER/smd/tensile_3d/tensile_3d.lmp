@@ -75,7 +75,7 @@ variable        maxdist equal ${h}
 fix             dtfix all smd/adjust_dt 0.1
 fix             force_fix1 top setforce 0 0 0
 fix             force_fix2 bot setforce 0 0 0
-fix             integration_fix all smd/integrate_tlsph
+fix             integration_fix all smd/integrate_tlsph xsph
 variable        force equal 0.5*(f_force_fix2[1]-f_force_fix1[1])
 variable        disp equal 2.0*${vel}*f_dtfix
 variable        strain equal v_disp/${L0}

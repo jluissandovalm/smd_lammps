@@ -157,9 +157,13 @@ void PairTlsph::PreCompute() {
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
 	double r0, r0Sq, wf, wfd, h, irad, voli, volj, scale;
 	Vector3d dx0, dx, dv, g;
-	Matrix3d Ktmp, Fdottmp, Ftmp, L, Fold, U, eye;
+	Matrix3d Ktmp, Fdottmp, Ftmp, L, Fold, U, eye, K3di;
+	Matrix2d K2d, K2di;
 	Vector3d xi, xj, vi, vj, vinti, vintj, x0i, x0j, dvint, du;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
+	bool Shape_Matrix_Inversion_Success;
+	SelfAdjointEigenSolver < Matrix2d > es;
+	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	eye.setIdentity();
 
@@ -230,8 +234,6 @@ void PairTlsph::PreCompute() {
 
 			// distance vectors in current and reference configuration, velocity difference
 			dx = xj - xi;
-			if (periodic)
-				domain->minimum_image(dx(0), dx(1), dx(2));
 			dv = vj - vi;
 			dvint = vintj - vinti;
 
@@ -271,57 +273,72 @@ void PairTlsph::PreCompute() {
 
 			if (mol[i] > 0) {
 
-				if (domain->dimension == 2) {
-					K[i](0, 2) = 0.0;
-					K[i](1, 2) = 0.0;
-					K[i](2, 0) = 0.0;
-					K[i](2, 1) = 0.0;
-					K[i](2, 2) = 1.0;
-					K[i] = pseudo_inverse_SVD(K[i]);
-					K[i](2, 2) = 1.0; // make inverse of K well defined even when it is rank-deficient (3d matrix, only 2d information)
-				} else {
-					K[i] = pseudo_inverse_SVD(K[i]);
-				}
+				Shape_Matrix_Inversion_Success = false;
 
-				Fincr[i] *= K[i]; // use shape matrix to obtain first-order corrected SPH approximation
-				Fincr[i] += eye;
+				if (domain->dimension == 2) {
+					K2d(0, 0) = K[i](0, 0);
+					K2d(0, 1) = K[i](0, 1);
+					K2d(1, 0) = K[i](1, 0);
+					K2d(1, 1) = K[i](1, 1);
+
+					if (fabs(K2d.determinant()) > 1.0e-4) {
+						//printf("attempting inverse of 2d K\n");
+						es.compute(K2d);
+						if ((fabs(es.eigenvalues()(0)) > 1.0e-4) && (fabs(es.eigenvalues()(1)) > 1.0e-4)) {
+							Shape_Matrix_Inversion_Success = true;
+						} else {
+							cout << endl << "These are the eigenvalues of K: " << endl << es.eigenvalues() << endl;
+						}
+					} else {
+						printf("not attempting inverse of 2d K because determinant=%g is too small\n", K2d.determinant());
+					}
+
+					if (Shape_Matrix_Inversion_Success) {
+						K2di = K2d.inverse();
+						K[i].setZero();
+						K[i](0, 0) = K2di(0, 0);
+						K[i](0, 1) = K2di(0, 1);
+						K[i](1, 0) = K2di(1, 0);
+						K[i](1, 1) = K2di(1, 1);
+						K[i](2, 2) = 1.0;
+					} else {
+						cout << endl << "we have a problem with K; this is K" << endl << K2d << endl;
+						cout << "this is Ki" << endl << K2di << endl;
+						printf("this is the determinant %g\n", K2d.determinant());
+						K[i].setIdentity();
+						//error->one(FLERR, "");
+					}
+				} else { // 3d
+					if (fabs(K[i].determinant()) > 1.0e-4) {
+						es3d.compute(K[i]);
+						if ((fabs(es3d.eigenvalues()(0)) > 1.0e-4) && (fabs(es3d.eigenvalues()(1)) > 1.0e-4)
+								&& (fabs(es3d.eigenvalues()(2)) > 1.0e-4)) {
+							Shape_Matrix_Inversion_Success = true;
+						} else {
+							cout << endl << "These are the eigenvalues of K: " << endl << es3d.eigenvalues() << endl;
+						}
+					} else {
+						printf("not attempting inverse of 3d K because determinant=%g is too small\n", K[i].determinant());
+					}
+
+					if (Shape_Matrix_Inversion_Success) {
+						K[i] = K[i].inverse().eval();
+					} else {
+						cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
+						cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
+						printf("this is the determinant of K %g\n", K[i].determinant());
+						K[i].setIdentity();
+						//error->one(FLERR, "");
+					}
+				} // end if 3d
+
+				//cout << "this is Fincr"  << Fincr[i] << endl;
+
 				Fdot[i] *= K[i];
-
-				/*
-				 * we need to be able to recover from a potentially planar (2d) configuration of particles
-				 */
-				if (domain->dimension == 2) {
-					Fincr[i](0, 2) = 0.0;
-					Fincr[i](1, 2) = 0.0;
-					Fincr[i](2, 0) = 0.0;
-					Fincr[i](2, 1) = 0.0;
-					Fincr[i](2, 2) = 1.0;
-					Fdot[i](0, 2) = 0.0;
-					Fdot[i](1, 2) = 0.0;
-					Fdot[i](2, 0) = 0.0;
-					Fdot[i](2, 1) = 0.0;
-					Fdot[i](2, 2) = 0.0;
-				}
+				Fincr[i] *= K[i];
+				Fincr[i] += eye; // we add the identity matrix because F = dx/dX = du/dX + I
+				FincrInv[i] = Fincr[i].inverse();
 				detF[i] = Fincr[i].determinant();
-				FincrInv[i] = pseudo_inverse_SVD(Fincr[i]);
-				;
-				//FincrInv[i] = Fincr[i].inverse();
-
-				/*
-				 * check that F * F^-1 is unit matrix
-				 */
-				Matrix3d Mdiff = Fincr[i] * FincrInv[i] - eye;
-				if (Mdiff.norm() > 1.0e-10) {
-					printf("Inversion of F is inaccurate\n");
-					cout << "Here is the difference matrix to unity:" << endl << Mdiff << endl;
-				}
-
-//				if (tag[i] == 101) {
-//					printf("J=%f, nn = %d\n", detF[i], numNeighsRefConfig[i]);
-//					cout << "Here is matrix F:" << endl << Fincr[i] << endl;
-//					cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
-//					cout << "Here is matrix K-1:" << endl << K[i] << endl << endl;
-//				}
 
 				/*
 				 * make sure F stays within some limits
@@ -384,7 +401,6 @@ void PairTlsph::PreCompute() {
 			} // end if mol[i] > 0
 
 			if (mol[i] < 0) {
-
 				d[i].setZero();
 				D[i].setZero();
 				Fdot[i].setZero();
@@ -393,9 +409,9 @@ void PairTlsph::PreCompute() {
 				detF[i] = 1.0;
 				K[i].setIdentity();
 
-				vint[i][0] = 0.0;
-				vint[i][1] = 0.0;
-				vint[i][2] = 0.0;
+				//vint[i][0] = 0.0;
+				//vint[i][1] = 0.0;
+				//vint[i][2] = 0.0;
 			}
 		}  // end if setflag[itype]
 	} // end loop over i = 0 to nlocal

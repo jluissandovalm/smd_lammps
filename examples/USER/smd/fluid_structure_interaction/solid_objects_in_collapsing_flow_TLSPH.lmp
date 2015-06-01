@@ -87,7 +87,7 @@ compute         rho all smd/rho
 fix             gfix all gravity -9.81 vector 0 1 0 # add gravity
 variable        etot equal pe+ke+c_alleint+f_gfix # total energy of the system
 fix             dtfix all smd/adjust_dt 0.1 # compute stable time increment
-fix             integration_fix_water water smd/integrate_ulsph adjust_radius 1.01 10 15 xsph
+fix             integration_fix_water water smd/integrate_ulsph adjust_radius 1.01 10 15 xsph 
 fix             integration_fix_solids solids smd/integrate_tlsph xsph
 fix             balance_fix all balance 1000 0.9 rcb # load balancing for MPI
 

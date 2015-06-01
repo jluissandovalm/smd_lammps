@@ -211,9 +211,9 @@ void FixSMDIntegrateUlsph::initial_integrate(int vflag) {
 			if (xsphFlag) {
 
 				// construct XSPH velocity
-				vxsph_x = v[i][0] + 0.5 * smoothVel[i](0);
-				vxsph_y = v[i][1] + 0.5 * smoothVel[i](1);
-				vxsph_z = v[i][2] + 0.5 * smoothVel[i](2);
+				vxsph_x = v[i][0] - 0.5 * smoothVel[i](0);
+				vxsph_y = v[i][1] - 0.5 * smoothVel[i](1);
+				vxsph_z = v[i][2] - 0.5 * smoothVel[i](2);
 
 				vest[i][0] = vxsph_x + dtfm * f[i][0];
 				vest[i][1] = vxsph_y + dtfm * f[i][1];
