@@ -48,14 +48,11 @@ public:
     virtual void initial_integrate(int);
     virtual void final_integrate();
     virtual void reset_dt();
-    int pack_forward_comm(int, int *, double *, int, int *);
-    void unpack_forward_comm(int, int, double *);
 
 protected:
     double dtv, dtf, vlimit, vlimitsq;
     int mass_require;
-    bool updateReferenceConfigurationFlag, xsphFlag, reinitReferenceConfigurationFlag, adjust_radius_flag;
-    int nRefConfigUpdates;
+    bool xsphFlag;
 
     class Pair *pair;
 };

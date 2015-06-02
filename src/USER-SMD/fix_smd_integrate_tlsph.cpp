@@ -54,9 +54,6 @@ FixSMDIntegrateTlsph::FixSMDIntegrateTlsph(LAMMPS *lmp, int narg, char **arg) :
 		error->all(FLERR, "Illegal fix smd/integrate_tlsph command");
 	}
 
-	adjust_radius_flag = false;
-	reinitReferenceConfigurationFlag = false;
-	updateReferenceConfigurationFlag = false;
 	xsphFlag = false;
 	vlimit = -1.0;
 	int iarg = 3;
@@ -76,22 +73,6 @@ FixSMDIntegrateTlsph::FixSMDIntegrateTlsph(LAMMPS *lmp, int narg, char **arg) :
 			xsphFlag = true;
 			if (comm->me == 0) {
 				printf("... will use XSPH time integration\n");
-			}
-		} else if (strcmp(arg[iarg], "update") == 0) {
-			updateReferenceConfigurationFlag = true;
-			if (comm->me == 0) {
-				printf("... will update the reference configuration\n");
-			}
-		} else if (strcmp(arg[iarg], "reinit") == 0) {
-			reinitReferenceConfigurationFlag = true;
-			if (comm->me == 0) {
-				printf("... will reinitialize reference configuration with current configuration\n");
-			}
-		} else if (strcmp(arg[iarg], "adjust_radius") == 0) {
-			adjust_radius_flag = true;
-
-			if (comm->me == 0) {
-				printf("... will evolve smoothing length dynamically based on deformation\n");
 			}
 		} else if (strcmp(arg[iarg], "limit_velocity") == 0) {
 			iarg++;
@@ -117,10 +98,8 @@ FixSMDIntegrateTlsph::FixSMDIntegrateTlsph(LAMMPS *lmp, int narg, char **arg) :
 	}
 
 	time_integrate = 1;
-	nRefConfigUpdates = 0;
 
 	// set comm sizes needed by this fix
-	comm_forward = 5;
 
 	atom->add_callback(0);
 
@@ -141,28 +120,6 @@ void FixSMDIntegrateTlsph::init() {
 	dtv = update->dt;
 	dtf = 0.5 * update->dt * force->ftm2v;
 	vlimitsq = vlimit * vlimit;
-
-	/*
-	 * need this to initialize x0 coordinates if not properly set in data file
-	 */
-	if (reinitReferenceConfigurationFlag == true) {
-		double **x = atom->x;
-		double **x0 = atom->x0;
-		int *mask = atom->mask;
-		int nlocal = atom->nlocal;
-
-		for (int i = 0; i < nlocal; i++) {
-
-			if (mask[i] & groupbit) {
-
-				// re-set x0 coordinates
-				x0[i][0] = x[i][0];
-				x0[i][1] = x[i][1];
-				x0[i][2] = x[i][2];
-
-			}
-		}
-	}
 }
 
 /* ----------------------------------------------------------------------
@@ -219,10 +176,6 @@ void FixSMDIntegrateTlsph::initial_integrate(int vflag) {
 				vxsph_x = v[i][0] + 0.5 * smoothVelDifference[i](0);
 				vxsph_y = v[i][1] + 0.5 * smoothVelDifference[i](1);
 				vxsph_z = v[i][2] + 0.5 * smoothVelDifference[i](2);
-
-//				vest[i][0] = v[i][0] + dtfm * f[i][0]; // this form leads to conservation problems with angular momentum
-//				vest[i][1] = v[i][1] + dtfm * f[i][1];
-//				vest[i][2] = v[i][2] + dtfm * f[i][2];
 
 				vest[i][0] = vxsph_x + dtfm * f[i][0];
 				vest[i][1] = vxsph_y + dtfm * f[i][1];
@@ -298,47 +251,3 @@ void FixSMDIntegrateTlsph::reset_dt() {
 }
 
 /* ---------------------------------------------------------------------- */
-
-
-/* ---------------------------------------------------------------------- */
-
-int FixSMDIntegrateTlsph::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
-	int i, j, m;
-	double *radius = atom->radius;
-	double *vfrac = atom->vfrac;
-	double **x0 = atom->x0;
-
-//printf("in FixSMDIntegrateTlsph::pack_forward_comm\n");
-	m = 0;
-	for (i = 0; i < n; i++) {
-		j = list[i];
-		buf[m++] = x0[j][0];
-		buf[m++] = x0[j][1];
-		buf[m++] = x0[j][2];
-
-		buf[m++] = vfrac[j];
-		buf[m++] = radius[j];
-	}
-	return m;
-}
-
-/* ---------------------------------------------------------------------- */
-
-void FixSMDIntegrateTlsph::unpack_forward_comm(int n, int first, double *buf) {
-	int i, m, last;
-	double *radius = atom->radius;
-	double *vfrac = atom->vfrac;
-	double **x0 = atom->x0;
-
-//printf("in FixSMDIntegrateTlsph::unpack_forward_comm\n");
-	m = 0;
-	last = first + n;
-	for (i = first; i < last; i++) {
-		x0[i][0] = buf[m++];
-		x0[i][1] = buf[m++];
-		x0[i][2] = buf[m++];
-
-		vfrac[i] = buf[m++];
-		radius[i] = buf[m++];
-	}
-}

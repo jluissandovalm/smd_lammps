@@ -4,10 +4,10 @@ variable 	l0 equal 1.0 # lattice spacing for creating particles
 variable 	rho equal 1 # initial mass density
 variable 	E equal 1.0 # Young's modulus
 variable 	nu equal 0.3 # Poisson ratio
-variable 	h equal 3.01*${l0} # SPH smoothing kernel diameter
+variable 	h equal 2.01*${l0} # SPH smoothing kernel diameter
 variable 	vol_one equal ${l0}^2 # volume of one particle
 variable 	mass_one equal ${vol_one}*${rho} # mass of one particle
-variable 	skin equal 0.5*${l0} # Verlet list range
+variable 	skin equal 2.5*${l0} # Verlet list range
 variable 	vel equal 0.005 # pull velocity
 units 		si # si means: a consistent system of units is used. Here: mm / GPa / ms
 dimension 2 	# this is a 2d plane-strain simulation
@@ -20,7 +20,7 @@ comm_modify 	vel yes # required for SMD simulations!
 atom_modify	map array
 # create simulation box and particles
 lattice 	sq ${l0}
-region 		box block -10 10 -10 10 -0.01 0.01 units box
+region 		box block -10 10 -10 10 -0.1 0.1 units box
 create_box 	1 box
 create_atoms 	1 box
 group		tlsph type 1
@@ -33,11 +33,11 @@ region 		top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
 region 		bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
 group top region top # top row of particles
 group bot region bot # bottom row of particles
-pair_style tlsph # activate Total-Lagrangian SPH
+pair_style tlsph *UPDATE_PAIRWISE 0.1 # activate Total-Lagrangian SPH
 # rh0 E nu Q1 Q2 hg Cp
 pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 1.00 0.0 100 1.0 &
 		*LINEAR_PLASTICITY 0.2 0.0 &
-		*FAILURE_MAX_PLASTIC_STRAIN 0.5 &
+		*FAILURE_MAX_PLASTIC_STRAIN 2000.5 &
 		*EOS_LINEAR &
 		*END
 
@@ -61,8 +61,10 @@ fix botfix bot setforce 0 0 0
 fix dtfix all smd/adjust_dt 0.1
 variable stress equal 0.5*(f_botfix[2]-f_topfix[2])/20
 variable strain equal (2.0*${vel}*f_dtfix/20) # strain: relative elongation
-fix integration_fix all smd/integrate_tlsph update xsph adjust_radius
+fix integration_fix all smd/integrate_tlsph 
 fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain
 run 10000
+#velocity all set 0 0 0 units box
+#run 7000

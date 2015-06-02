@@ -217,7 +217,8 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 	double r, h, wf, wfd;
 	Vector3d dx;
 
-	if (updateFlag == 0) return;
+	if (updateFlag == 0)
+		return;
 
 	int nlocal = atom->nlocal;
 	nmax = atom->nmax;
@@ -228,14 +229,20 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 // nlocal_neigh = nlocal when neigh list was built, may be smaller than nlocal
 
 	double **x0 = atom->x0;
+	double **defgrad0 = atom->smd_data_9;
 	double *radius = atom->radius;
 	int *type = atom->type;
+	Matrix3d Fi, Fj, E, eye;
+	Vector3d projected_strain_vector;
+	double projected_strain;
 	tagint *tag = atom->tag;
 	NeighList *list = pair->list;
 	inum = list->inum;
 	ilist = list->ilist;
 	numneigh = list->numneigh;
 	firstneigh = list->firstneigh;
+	eye.setIdentity();
+	bool ADAPTIVE_H = false;
 
 	// zero npartner for all current atoms
 
@@ -248,6 +255,18 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		jlist = firstneigh[i];
 		jnum = numneigh[i];
 
+		if (ADAPTIVE_H) {
+			Fi(0, 0) = defgrad0[i][0];
+			Fi(0, 1) = defgrad0[i][1];
+			Fi(0, 2) = defgrad0[i][2];
+			Fi(1, 0) = defgrad0[i][3];
+			Fi(1, 1) = defgrad0[i][4];
+			Fi(1, 2) = defgrad0[i][5];
+			Fi(2, 0) = defgrad0[i][6];
+			Fi(2, 1) = defgrad0[i][7];
+			Fi(2, 2) = defgrad0[i][8];
+		}
+
 		for (jj = 0; jj < jnum; jj++) {
 			j = jlist[jj];
 			j &= NEIGHMASK;
@@ -257,7 +276,25 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			dx(1) = x0[i][1] - x0[j][1];
 			dx(2) = x0[i][2] - x0[j][2];
 			r = dx.norm();
-			h = radius[i] + radius[j];
+
+			if (ADAPTIVE_H) {
+				Fj(0, 0) = defgrad0[j][0];
+				Fj(0, 1) = defgrad0[j][1];
+				Fj(0, 2) = defgrad0[j][2];
+				Fj(1, 0) = defgrad0[j][3];
+				Fj(1, 1) = defgrad0[j][4];
+				Fj(1, 2) = defgrad0[j][5];
+				Fj(2, 0) = defgrad0[j][6];
+				Fj(2, 1) = defgrad0[j][7];
+				Fj(2, 2) = defgrad0[j][8];
+				//E = 0.25 * (Fj.transpose() * Fj - eye + Fi.transpose() * Fi - eye);
+				E = 0.5 * (Fi + Fj);
+				projected_strain_vector = E * (dx / r);
+				projected_strain = projected_strain_vector.norm();
+				h = projected_strain * (radius[i] + radius[j]);
+			} else {
+				h = radius[i] + radius[j];
+			}
 
 			if (r <= h) {
 				npartner[i]++;
@@ -292,6 +329,18 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		jlist = firstneigh[i];
 		jnum = numneigh[i];
 
+		if (ADAPTIVE_H) {
+			Fi(0, 0) = defgrad0[i][0];
+			Fi(0, 1) = defgrad0[i][1];
+			Fi(0, 2) = defgrad0[i][2];
+			Fi(1, 0) = defgrad0[i][3];
+			Fi(1, 1) = defgrad0[i][4];
+			Fi(1, 2) = defgrad0[i][5];
+			Fi(2, 0) = defgrad0[i][6];
+			Fi(2, 1) = defgrad0[i][7];
+			Fi(2, 2) = defgrad0[i][8];
+		}
+
 		for (jj = 0; jj < jnum; jj++) {
 			j = jlist[jj];
 			j &= NEIGHMASK;
@@ -301,7 +350,25 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			dx(2) = x0[i][2] - x0[j][2];
 			r = dx.norm();
 			jtype = type[j];
-			h = radius[i] + radius[j];
+
+			if (ADAPTIVE_H) {
+				Fj(0, 0) = defgrad0[j][0];
+				Fj(0, 1) = defgrad0[j][1];
+				Fj(0, 2) = defgrad0[j][2];
+				Fj(1, 0) = defgrad0[j][3];
+				Fj(1, 1) = defgrad0[j][4];
+				Fj(1, 2) = defgrad0[j][5];
+				Fj(2, 0) = defgrad0[j][6];
+				Fj(2, 1) = defgrad0[j][7];
+				Fj(2, 2) = defgrad0[j][8];
+				//E = 0.25 * (Fj.transpose() * Fj - eye + Fi.transpose() * Fi - eye);
+				E = 0.5 * (Fi + Fj);
+				projected_strain_vector = E * (dx / r);
+				projected_strain = projected_strain_vector.norm();
+				h = projected_strain * (radius[i] + radius[j]);
+			} else {
+				h = radius[i] + radius[j];
+			}
 
 			if (r < h) {
 				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
