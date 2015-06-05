@@ -497,6 +497,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	double *de = atom->de;
 	double *rmass = atom->rmass;
 	double *radius = atom->radius;
+	double *damage = atom->damage;
 	double *plastic_strain = atom->eff_plastic_strain;
 	//double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
 	//double *damage = atom->damage;
@@ -648,6 +649,9 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				hg_mag *= -voli * volj * wf * Lookup[YOUNGS_MODULUS][itype]; // hg_mag has dimensions [J*m^(-1)] = [N]
 				f_hg = (hg_mag / (r + 0.01 * h)) * dx;
 			}
+
+			// scale hourglass force with damage
+			f_hg *= (1.0 - damage[i]) * (1.0 - damage[j]);
 
 			// sum stress, viscous, and hourglass forces
 			sumForces = f_stress + f_visc + f_hg;

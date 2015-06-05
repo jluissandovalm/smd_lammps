@@ -8,7 +8,7 @@ variable 	h equal 2.01*${l0} # SPH smoothing kernel diameter
 variable 	vol_one equal ${l0}^2 # volume of one particle
 variable 	mass_one equal ${vol_one}*${rho} # mass of one particle
 variable 	skin equal 5*${l0} # Verlet list range
-variable 	vel equal 0.005 # pull velocity
+variable 	vel equal 0.5 # pull velocity
 units 		si # si means: a consistent system of units is used. Here: mm / GPa / ms
 dimension 2 	# this is a 2d plane-strain simulation
 boundary 	sm sm p # simulation box boundaries
@@ -51,7 +51,7 @@ variable        eosC5 equal 0.0
 variable        eosC6 equal 0.0
 
 # rh0 E nu Q1 Q2 hg Cp
-pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 1.00 0.0 000 875e3 &
+pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.00 0.0 00 875e3 &
 		*JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} 293.15 502 ${JC_M} &
 		*FAILURE_MAX_PLASTIC_STRAIN 1.5 &
 		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
@@ -83,6 +83,6 @@ fix integration_fix all smd/integrate_tlsph
 fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain
-run 100000
+run 1000
 #velocity all set 0 0 0 units box
 #run 7000
