@@ -2,7 +2,7 @@
 variable        l0 equal 2 # initial particle lattice spacing
 variable        rho equal 1.0 # mass density
 variable        h equal 2.5*${l0} # SPH kernel diameter
-variable        c0 equal 1.0 # speed of sound for ulsph
+variable        c0 equal 10.0 # speed of sound for ulsph
 variable        E equal 1*${c0}^2*${rho} # actually bulk modulus
 variable        sigy equal 0.05*${E} # plastic yield strength
 variable        nu equal 0.3
@@ -24,14 +24,14 @@ newton          off
 atom_modify     map array
 
 # create simulation box, a container, and a ulsph column
-region          box block -50 50 -50 50 -50 50 units box
+region          box block -100 100 -100 100 -50 50 units box
 create_box      2 box
 
 lattice         sc ${l0}
-region          particles block -50 50 -50 50 12 22 units box
+region          particles block -100 100 -100 100 12 22 units box
 create_atoms    1 region particles
 
-region          stationary block -46 46 -46 46 EDGE EDGE units box side out
+region          stationary block -96 96 -96 96 EDGE EDGE units box side out
 
 group           particles type 1
 group           tlsph type 1
@@ -45,7 +45,7 @@ pair_style      hybrid/overlay tlsph smd/tri_surface 1.0
 #                                 rh0    E    nu    Q1    Q2   hg    Cp
 pair_coeff      1 1 tlsph *COMMON ${rho} ${E} ${nu} 1.0  0.0   10    1.0 &
                 *LINEAR_PLASTICITY ${sigy} 0.0 &
-		*FAILURE_MAX_PLASTIC_STRAIN 0.05 &
+		*FAILURE_MAX_PLASTIC_STRAIN 0.01 &
 		*EOS_LINEAR &
                 *END
 pair_coeff      2 2 none
@@ -71,14 +71,14 @@ compute         Edot particles smd/tlsph_strain_rate
 compute         damage tlsph smd/damage
 compute         epl all smd/plastic_strain
 
-dump            dump_custom all custom 100 dump.LAMMPS id type mol x y z vx vy vz c_rho c_nn &
+dump            dump_custom all custom 500 dump.LAMMPS id type mol x y z vx vy vz c_rho c_nn &
                 c_E[1] c_E[2] c_E[3] c_E[4] c_E[5] c_E[6] &
                 c_Edot[1] c_Edot[2] c_Edot[3] c_Edot[4] c_Edot[5] c_Edot[6] &
                 c_S[7] &
                 c_damage c_epl
 dump_modify     dump_custom first yes
 
-dump            dump_tool tool custom 100 dump_tool.LAMMPS id type mol x y z &
+dump            dump_tool tool custom 500 dump_tool.LAMMPS id type mol x y z &
                 c_F[1] c_F[2] c_F[3] c_F[4] c_F[5] c_F[6] c_F[7] c_F[8] c_F[9]
 dump_modify     dump_tool first yes
 
@@ -86,12 +86,14 @@ run 0
 
 balance 1.0 shift xy 5 1.05
 
+change_box      all boundary sm sm sm 
+
 fix             force_fix stationary setforce 0 0 0
 fix             dtfix all smd/adjust_dt 0.1
-fix             integration_fix particles smd/integrate_tlsph
+fix             integration_fix particles smd/integrate_tlsph limit_velocity 1.0
 fix             boundary_fix tool smd/move_tri_surf *LINEAR 0 0 0.1
 fix             balance_fix all balance 1000 1.05 shift x 10 1.05
-run             20000
+run             30000
 
 
 

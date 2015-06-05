@@ -72,8 +72,7 @@ public:
 	void ComputePressure(const int i, const double pInitial, const double d_iso, double &pFinal, double &p_rate);
 	void ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_dev, const Matrix3d d_dev, Matrix3d &sigmaFinal_dev,
 			Matrix3d &sigma_dev_rate, double &plastic_strain_increment);
-	void ComputeDamage(const int i, const Matrix3d strain, const double pFinal, const Matrix3d sigmaFinal,
-			const Matrix3d sigmaFinal_dev, const double plastic_strain_increment, Matrix3d &sigma_damaged);
+	void ComputeDamage(const int i, const Matrix3d strain, const Matrix3d sigmaFinal, Matrix3d &sigma_damaged);
 	void spiky_kernel_and_derivative(const double h, const double r, double &wf, double &wfd);
 
 protected:
@@ -110,7 +109,9 @@ protected:
 	double cut_comm;
 
 	enum {
-		UPDATE_NONE = 5000
+		UPDATE_NONE = 5000,
+		UPDATE_CONSTANT_THRESHOLD = 5001,
+		UPDATE_PAIRWISE_RATIO = 5002,
 	};
 
 	enum {
@@ -123,37 +124,43 @@ protected:
 		EOS_SHOCK = 6,
 		EOS_POLYNOMIAL = 7,
 		EOS_NONE = 8,
-		UPDATE_CONSTANT_THRESHOLD = 9,
-		UPDATE_PAIRWISE_RATIO = 10,
-		REFERENCE_DENSITY = 11,
-		YOUNGS_MODULUS = 12,
-		POISSON_RATIO = 13,
-		HOURGLASS_CONTROL_AMPLITUDE = 14,
-		HEAT_CAPACITY = 15,
-		LAME_LAMBDA = 16,
-		SHEAR_MODULUS = 17,
-		M_MODULUS = 18,
-		SIGNAL_VELOCITY = 19,
-		BULK_MODULUS = 20,
-		VISCOSITY_Q1 = 21,
-		VISCOSITY_Q2 = 22,
-		YIELD_STRESS = 23,
-		FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD = 24,
-		JC_A = 25,
-		JC_B = 26,
-		JC_a = 27,
-		JC_C = 28,
-		JC_epdot0 = 29,
-		JC_T0 = 30,
-		JC_Tmelt = 31,
-		JC_M = 32,
-		EOS_SHOCK_C0 = 33,
-		EOS_SHOCK_S = 34,
-		EOS_SHOCK_GAMMA = 35,
-		HARDENING_PARAMETER = 36,
-		FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD = 37,
-		FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD = 38,
-		MAX_KEY_VALUE = 39
+		REFERENCE_DENSITY = 9,
+		YOUNGS_MODULUS = 10,
+		POISSON_RATIO = 11,
+		HOURGLASS_CONTROL_AMPLITUDE = 12,
+		HEAT_CAPACITY = 13,
+		LAME_LAMBDA = 14,
+		SHEAR_MODULUS = 15,
+		M_MODULUS = 16,
+		SIGNAL_VELOCITY = 17,
+		BULK_MODULUS = 18,
+		VISCOSITY_Q1 = 19,
+		VISCOSITY_Q2 = 20,
+		YIELD_STRESS = 21,
+		FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD = 22,
+		JC_A = 23,
+		JC_B = 24,
+		JC_a = 25,
+		JC_C = 26,
+		JC_epdot0 = 27,
+		JC_T0 = 28,
+		JC_Tmelt = 29,
+		JC_M = 30,
+		EOS_SHOCK_C0 = 31,
+		EOS_SHOCK_S = 32,
+		EOS_SHOCK_GAMMA = 33,
+		HARDENING_PARAMETER = 34,
+		FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD = 35,
+		FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD = 36,
+		FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD = 37,
+		EOS_POLYNOMIAL_C0 = 38,
+		EOS_POLYNOMIAL_C1 = 39,
+		EOS_POLYNOMIAL_C2 = 40,
+		EOS_POLYNOMIAL_C3 = 41,
+		EOS_POLYNOMIAL_C4 = 42,
+		EOS_POLYNOMIAL_C5 = 43,
+		EOS_POLYNOMIAL_C6 = 44,
+		MAX_KEY_VALUE = 45
 	};
 
 	// enumeration of failure / damage models
@@ -162,7 +169,8 @@ protected:
 		FAILURE_MAX_PRINCIPAL_STRAIN = 4001,
 		FAILURE_MAX_PRINCIPAL_STRESS = 4002,
 		FAILURE_MAX_PLASTIC_STRAIN = 4003,
-		FAILURE_JOHNSON_COOK = 4004
+		FAILURE_JOHNSON_COOK = 4004,
+		FAILURE_MAX_PAIRWISE_STRAIN = 4005
 	};
 
 	// C++ std dictionary to hold material model settings per particle type

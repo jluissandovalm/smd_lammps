@@ -2,12 +2,12 @@
 # define initial parameters
 variable 	l0 equal 1.0 # lattice spacing for creating particles
 variable 	rho equal 1 # initial mass density
-variable 	E equal 1.0 # Young's modulus
+variable 	E equal 70.0 # Young's modulus
 variable 	nu equal 0.3 # Poisson ratio
 variable 	h equal 2.01*${l0} # SPH smoothing kernel diameter
 variable 	vol_one equal ${l0}^2 # volume of one particle
 variable 	mass_one equal ${vol_one}*${rho} # mass of one particle
-variable 	skin equal 2.5*${l0} # Verlet list range
+variable 	skin equal 5*${l0} # Verlet list range
 variable 	vel equal 0.005 # pull velocity
 units 		si # si means: a consistent system of units is used. Here: mm / GPa / ms
 dimension 2 	# this is a 2d plane-strain simulation
@@ -33,23 +33,41 @@ region 		top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
 region 		bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
 group top region top # top row of particles
 group bot region bot # bottom row of particles
-pair_style tlsph *UPDATE_PAIRWISE 0.1 # activate Total-Lagrangian SPH
+pair_style tlsph # activate Total-Lagrangian SPH
+
+variable        JC_A equal 0.3241
+variable        JC_B equal 0.1138
+variable        JC_N equal 0.42
+variable        JC_C equal 0.002
+variable        JC_M equal 1.34
+variable        JC_epsdot0 equal 1.0e-3 # 1/s = 1/(1000 ms)
+
+variable        eosC0 equal 0.0
+variable        eosC1 equal 74.2
+variable        eosC2 equal 60.5
+variable        eosC3 equal 36.5
+variable        eosC4 equal 1.96
+variable        eosC5 equal 0.0
+variable        eosC6 equal 0.0
+
 # rh0 E nu Q1 Q2 hg Cp
-pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 1.00 0.0 100 1.0 &
-		*LINEAR_PLASTICITY 0.2 0.0 &
-		*FAILURE_MAX_PLASTIC_STRAIN 2000.5 &
-		*EOS_LINEAR &
+pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 1.00 0.0 000 875e3 &
+		*JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} 293.15 502 ${JC_M} &
+		*FAILURE_MAX_PLASTIC_STRAIN 1.5 &
+		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
 		*END
 
+		#*LINEAR_PLASTICITY 0.2 0.0 &
 
 compute 	p all smd/plastic_strain
+compute 	epsdot all smd/plastic_strain_rate
 compute 	S all smd/tlsph_stress # Cauchy stress tensor
 compute 	D all smd/tlsph_strain_rate
 compute 	nn all smd/tlsph_num_neighs # number of neighbors for each particle
 compute 	damage all smd/damage
 dump 		dump_id all custom 100 dump.LAMMPS id type x y z &
 			c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_nn c_p &
-			c_D[1] c_D[2] c_D[4] c_damage radius
+			c_D[1] c_D[2] c_D[4] c_damage radius c_epsdot
 dump_modify 	dump_id first yes
 # apply velocity boundary condition to top and bottom rows of particles
 velocity top set 0.0 ${vel} 0.0 sum no units box
@@ -65,6 +83,6 @@ fix integration_fix all smd/integrate_tlsph
 fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain
-run 10000
+run 100000
 #velocity all set 0 0 0 units box
 #run 7000

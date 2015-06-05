@@ -687,26 +687,13 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			 * each other, i.e., are in a tensile mode.
 			 */
 
-			if (failureModel[itype] == FAILURE_MAX_PLASTIC_STRAIN) {
-//				if (delVdotDelR > 0.0) {
-//					exc_i = plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
-//					exc_j = plastic_strain[j] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
-//					if ((exc_i > 0.0) && (exc_j > 0.0)) {
-//						damage_rate = sqrt(eff_plastic_strain_rate[i] * eff_plastic_strain_rate[j])
-//								/ (0.1 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]);
-//						degradation_ij[i][jj] += damage_rate * update->dt;
-//					}
-//
-//					if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
-//						partner[i][jj] = 0;
-//					}
-//				}
+			if (failureModel[itype] == FAILURE_MAX_PAIRWISE_STRAIN) {
 
 				strain1d = (r - r0) / r0;
 				if (domain->dimension == 2) {
-					strain1d_max = 2.0 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
+					strain1d_max = 2.0 * Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
 				} else {
-					strain1d_max = Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
+					strain1d_max = Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
 				}
 				softening_strain = 0.1 * strain1d_max;
 
@@ -755,7 +742,7 @@ void PairTlsph::AssembleStress() {
 	int nlocal = atom->nlocal;
 	double dt = update->dt;
 	double M_eff, p_wave_speed, mass_specific_energy, vol_specific_energy, rho;
-	Matrix3d sigma_rate, eye, sigmaInitial, sigmaFinal, T, Jaumann_rate, sigma_rate_check;
+	Matrix3d sigma_rate, eye, sigmaInitial, sigmaFinal, T, T_damaged, Jaumann_rate, sigma_rate_check;
 	Matrix3d d_dev, sigmaInitial_dev, sigmaFinal_dev, sigma_dev_rate, strain;
 	Vector3d x0i, xi, xp;
 
@@ -821,12 +808,6 @@ void PairTlsph::AssembleStress() {
 				 */
 				sigmaFinal = pFinal * eye + sigmaFinal_dev; // this is the stress that is kept
 
-				/*
-				 *  Damage due to failure criteria.
-				 *  This is deactiavated for now as it needs to be thougth over.
-				 */
-
-				// ComputeDamage(i, strain, pFinal, sigmaFinal, sigmaFinal_dev, plastic_strain_increment, sigma_damaged);
 				if (JAUMANN) {
 					/*
 					 * sigma is already the co-rotated Cauchy stress.
@@ -860,6 +841,14 @@ void PairTlsph::AssembleStress() {
 				tlsph_stress[i][3] = sigmaFinal(1, 1);
 				tlsph_stress[i][4] = sigmaFinal(1, 2);
 				tlsph_stress[i][5] = sigmaFinal(2, 2);
+
+				/*
+				 *  Damage due to failure criteria.
+				 */
+				if ((failureModel[itype] != FAILURE_NONE) && (failureModel[itype] != FAILURE_MAX_PAIRWISE_STRAIN)) {
+					ComputeDamage(i, strain, T, T_damaged);
+					T = T_damaged;
+				}
 
 				// store rotated, "true" Cauchy stress
 				CauchyStress[i] = T;
@@ -1453,22 +1442,22 @@ void PairTlsph::coeff(int narg, char **arg) {
 				error->all(FLERR, str);
 			}
 
-			matProp2[std::make_pair("eos_polynomial_c0", itype)] = force->numeric(FLERR, arg[ioffset + 1]);
-			matProp2[std::make_pair("eos_polynomial_c1", itype)] = force->numeric(FLERR, arg[ioffset + 2]);
-			matProp2[std::make_pair("eos_polynomial_c2", itype)] = force->numeric(FLERR, arg[ioffset + 3]);
-			matProp2[std::make_pair("eos_polynomial_c3", itype)] = force->numeric(FLERR, arg[ioffset + 4]);
-			matProp2[std::make_pair("eos_polynomial_c4", itype)] = force->numeric(FLERR, arg[ioffset + 5]);
-			matProp2[std::make_pair("eos_polynomial_c5", itype)] = force->numeric(FLERR, arg[ioffset + 6]);
-			matProp2[std::make_pair("eos_polynomial_c6", itype)] = force->numeric(FLERR, arg[ioffset + 7]);
+			Lookup[EOS_POLYNOMIAL_C0][itype] = force->numeric(FLERR, arg[ioffset + 1]);
+			Lookup[EOS_POLYNOMIAL_C1][itype] = force->numeric(FLERR, arg[ioffset + 2]);
+			Lookup[EOS_POLYNOMIAL_C2][itype] = force->numeric(FLERR, arg[ioffset + 3]);
+			Lookup[EOS_POLYNOMIAL_C3][itype] = force->numeric(FLERR, arg[ioffset + 4]);
+			Lookup[EOS_POLYNOMIAL_C4][itype] = force->numeric(FLERR, arg[ioffset + 5]);
+			Lookup[EOS_POLYNOMIAL_C5][itype] = force->numeric(FLERR, arg[ioffset + 6]);
+			Lookup[EOS_POLYNOMIAL_C6][itype] = force->numeric(FLERR, arg[ioffset + 7]);
 			if (comm->me == 0) {
 				printf("\n%60s\n", "polynomial EOS based on strain rate");
-				printf("%60s : %g\n", "parameter c0", SafeLookup("eos_polynomial_c0", itype));
-				printf("%60s : %g\n", "parameter c1", SafeLookup("eos_polynomial_c1", itype));
-				printf("%60s : %g\n", "parameter c2", SafeLookup("eos_polynomial_c2", itype));
-				printf("%60s : %g\n", "parameter c3", SafeLookup("eos_polynomial_c3", itype));
-				printf("%60s : %g\n", "parameter c4", SafeLookup("eos_polynomial_c4", itype));
-				printf("%60s : %g\n", "parameter c5", SafeLookup("eos_polynomial_c5", itype));
-				printf("%60s : %g\n", "parameter c6", SafeLookup("eos_polynomial_c6", itype));
+				printf("%60s : %g\n", "parameter c0", Lookup[EOS_POLYNOMIAL_C0][itype]);
+				printf("%60s : %g\n", "parameter c1", Lookup[EOS_POLYNOMIAL_C1][itype]);
+				printf("%60s : %g\n", "parameter c2", Lookup[EOS_POLYNOMIAL_C2][itype]);
+				printf("%60s : %g\n", "parameter c3", Lookup[EOS_POLYNOMIAL_C3][itype]);
+				printf("%60s : %g\n", "parameter c4", Lookup[EOS_POLYNOMIAL_C4][itype]);
+				printf("%60s : %g\n", "parameter c5", Lookup[EOS_POLYNOMIAL_C5][itype]);
+				printf("%60s : %g\n", "parameter c6", Lookup[EOS_POLYNOMIAL_C6][itype]);
 			}
 		} // end polynomial eos
 
@@ -1511,8 +1500,51 @@ void PairTlsph::coeff(int narg, char **arg) {
 						Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]);
 			}
 		} // end maximum plastic strain failure criterion
+		else if (strcmp(arg[ioffset], "*FAILURE_MAX_PAIRWISE_STRAIN") == 0) {
+
+			/*
+			 * failure criterion based on maximum strain between a pair of TLSPH particles.
+			 */
+
+			if (comm->me == 0) {
+				printf("reading *FAILURE_MAX_PAIRWISE_STRAIN\n");
+			}
+
+			if (update_method != UPDATE_NONE) {
+				error->all(FLERR, "cannot use *FAILURE_MAX_PAIRWISE_STRAIN with updated Total-Lagrangian formalism");
+			}
+
+			t = string("*");
+			iNextKwd = -1;
+			for (iarg = ioffset + 1; iarg < narg; iarg++) {
+				s = string(arg[iarg]);
+				if (s.compare(0, t.length(), t) == 0) {
+					iNextKwd = iarg;
+					break;
+				}
+			}
+
+			if (iNextKwd < 0) {
+				sprintf(str, "no *KEYWORD terminates *FAILURE_MAX_PAIRWISE_STRAIN");
+				error->all(FLERR, str);
+			}
+
+			if (iNextKwd - ioffset != 1 + 1) {
+				sprintf(str, "expected 1 arguments following *FAILURE_MAX_PAIRWISE_STRAIN but got %d\n", iNextKwd - ioffset - 1);
+				error->all(FLERR, str);
+			}
+
+			failureModel[itype] = FAILURE_MAX_PAIRWISE_STRAIN;
+			Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype] = force->numeric(FLERR, arg[ioffset + 1]);
+
+			if (comm->me == 0) {
+				printf("\n%60s\n", "maximum pairwise strain failure criterion");
+				printf("%60s : %g\n", "failure occurs when pairwise strain reaches limit",
+						Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype]);
+			}
+		} // end pair based maximum strain failure criterion
 		else if (strcmp(arg[ioffset], "*FAILURE_MAX_PRINCIPAL_STRAIN") == 0) {
-			error->all(FLERR, "only *FAILURE_MAX_PLASTIC_STRAIN currently allowed");
+			error->all(FLERR, "this failure model is currently unsupported");
 
 			/*
 			 * maximum principal strain failure criterion
@@ -1551,7 +1583,6 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 		} // end maximum principal strain failure criterion
 		else if (strcmp(arg[ioffset], "*FAILURE_JOHNSON_COOK") == 0) {
-			error->all(FLERR, "only *FAILURE_MAX_PLASTIC_STRAIN currently allowed");
 
 			if (comm->me == 0) {
 				printf("reading *FAILURE_JOHNSON_COOK\n");
@@ -1593,7 +1624,7 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 		} else if (strcmp(arg[ioffset], "*FAILURE_MAX_PRINCIPAL_STRESS") == 0) {
-			error->all(FLERR, "only *FAILURE_MAX_PLASTIC_STRAIN currently allowed");
+			error->all(FLERR, "this failure model is currently unsupported");
 
 			/*
 			 * maximum principal stress failure criterion
@@ -2007,10 +2038,10 @@ void PairTlsph::ComputePressure(const int i, const double pInitial, const double
 				Lookup[EOS_SHOCK_S][itype], Lookup[EOS_SHOCK_GAMMA][itype], pInitial, dt, pFinal, p_rate);
 		break;
 	case EOS_POLYNOMIAL:
-		polynomialEOS(rho, Lookup[REFERENCE_DENSITY][itype], vol_specific_energy, SafeLookup("eos_polynomial_c0", itype),
-				SafeLookup("eos_polynomial_c1", itype), SafeLookup("eos_polynomial_c2", itype),
-				SafeLookup("eos_polynomial_c3", itype), SafeLookup("eos_polynomial_c4", itype),
-				SafeLookup("eos_polynomial_c5", itype), SafeLookup("eos_polynomial_c6", itype), pInitial, dt, pFinal, p_rate);
+		polynomialEOS(rho, Lookup[REFERENCE_DENSITY][itype], vol_specific_energy, Lookup[EOS_POLYNOMIAL_C0][itype],
+				Lookup[EOS_POLYNOMIAL_C1][itype], Lookup[EOS_POLYNOMIAL_C2][itype], Lookup[EOS_POLYNOMIAL_C3][itype],
+				Lookup[EOS_POLYNOMIAL_C4][itype], Lookup[EOS_POLYNOMIAL_C5][itype], Lookup[EOS_POLYNOMIAL_C6][itype], pInitial, dt,
+				pFinal, p_rate);
 
 		break;
 	default:
@@ -2079,33 +2110,29 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 /* ----------------------------------------------------------------------
  Compute damage. Called from AssembleStress().
  ------------------------------------------------------------------------- */
-void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const double pFinal, const Matrix3d sigmaFinal,
-		const Matrix3d sigmaFinal_dev, const double plastic_strain_increment, Matrix3d &sigma_damaged) {
+void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d stress, Matrix3d &stress_damaged) {
 	double *eff_plastic_strain = atom->eff_plastic_strain;
-	double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
-	//double *damage = atom->damage;
+	//double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
+	double *damage = atom->damage;
 	int *type = atom->type;
-	//double *radius = atom->radius;
-	//double dt = update->dt;
 	int itype = type[i];
 	bool damage_flag = false;
-	double jc_failure_strain;
+	double damage_gap;
 	Matrix3d eye;
 
 	eye.setIdentity();
+	double pressure = -stress.trace();
 
 	switch (failureModel[itype]) {
-	case FAILURE_NONE:
-		damage_flag = false;
-		break;
-
 	case FAILURE_MAX_PRINCIPAL_STRESS:
+		error->one(FLERR, "not yet implemented");
 		/*
 		 * maximum stress failure criterion:
 		 */
-		damage_flag = IsotropicMaxStressDamage(sigmaFinal, Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype]);
+		damage_flag = IsotropicMaxStressDamage(stress, Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype]);
 		break;
 	case FAILURE_MAX_PRINCIPAL_STRAIN:
+		error->one(FLERR, "not yet implemented");
 		/*
 		 * maximum strain failure criterion:
 		 */
@@ -2115,20 +2142,22 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const double p
 	case FAILURE_MAX_PLASTIC_STRAIN:
 		if (eff_plastic_strain[i] >= Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) {
 			damage_flag = true;
+			damage_gap = 0.1 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
+			damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
 		}
 		break;
 
 	case FAILURE_JOHNSON_COOK:
 
 		error->one(FLERR, "not yet implemented");
-		jc_failure_strain = JohnsonCookFailureStrain(pFinal, sigmaFinal_dev, SafeLookup("failure_JC_d1", itype),
-				SafeLookup("failure_JC_d2", itype), SafeLookup("failure_JC_d3", itype), SafeLookup("failure_JC_d4", itype),
-				SafeLookup("failure_JC_epdot0", itype), eff_plastic_strain_rate[i]);
-
-//cout << "plastic strain increment is " << plastic_strain_increment << "  jc fs is " << jc_failure_strain << endl;
-		if (eff_plastic_strain[i] / jc_failure_strain > 1.0) {
-			damage_flag = true;
-		}
+//		jc_failure_strain = JohnsonCookFailureStrain(pFinal, sigmaFinal_dev, SafeLookup("failure_JC_d1", itype),
+//				SafeLookup("failure_JC_d2", itype), SafeLookup("failure_JC_d3", itype), SafeLookup("failure_JC_d4", itype),
+//				SafeLookup("failure_JC_epdot0", itype), eff_plastic_strain_rate[i]);
+//
+////cout << "plastic strain increment is " << plastic_strain_increment << "  jc fs is " << jc_failure_strain << endl;
+//		if (eff_plastic_strain[i] / jc_failure_strain > 1.0) {
+//			damage_flag = true;
+//		}
 		break;
 
 	default:
@@ -2140,12 +2169,13 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const double p
 	 * Apply damage -- this is deactivated for now
 	 */
 
-//	if (pFinal < 0.0) { // compression: particle can carry compressive load but reduced shear
-//		sigma_damaged = pFinal * eye + (1.0 - damage[i]) * sigmaFinal_dev;
-//	} else { // tension: particle has reduced tensile and shear load bearing capability
-//		sigma_damaged = (1.0 - damage[i]) * (pFinal * eye + sigmaFinal_dev);
-//	}
-	sigma_damaged = sigmaFinal;
+	damage[i] = MIN(damage[i], 1.0);
+
+	if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
+		stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
+	} else { // tension: particle has reduced tensile and shear load bearing capability
+		stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
+	}
 
 }
 
