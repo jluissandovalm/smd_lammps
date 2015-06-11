@@ -382,7 +382,7 @@ bool IsotropicMaxStrainDamage(const Matrix3d E, const double maxStrain) {
 	/*
 	 * compute Eigenvalues of strain matrix
 	 */
-	SelfAdjointEigenSolver<Matrix3d> es;
+	SelfAdjointEigenSolver < Matrix3d > es;
 	es.compute(E); // compute eigenvalue and eigenvectors of strain
 
 	double max_eigenvalue = es.eigenvalues().maxCoeff();
@@ -410,7 +410,7 @@ bool IsotropicMaxStressDamage(const Matrix3d S, const double maxStress) {
 	/*
 	 * compute Eigenvalues of strain matrix
 	 */
-	SelfAdjointEigenSolver<Matrix3d> es;
+	SelfAdjointEigenSolver < Matrix3d > es;
 	es.compute(S); // compute eigenvalue and eigenvectors of strain
 
 	double max_eigenvalue = es.eigenvalues().maxCoeff();
@@ -436,13 +436,33 @@ double JohnsonCookFailureStrain(const double p, const Matrix3d Sdev, const doubl
 		const double d4, const double epdot0, const double epdot) {
 
 	double vm = sqrt(3. / 2.) * Sdev.norm(); // von-Mises equivalent stress
-	double epdot_ratio = epdot / epdot0;
-	epdot_ratio = MAX(epdot_ratio, 1.0);
-	double result = d1 + d2 * exp(d3 * vm / p); // * (1.0 + d4 * log(epdot_ratio)); // rest left out for now
-	if (result > 0.0) {
-		return result;
-	} else {
-		return 1.0e22;
+	if (vm < 0.0) {
+		printf("vm < 0.0, surely must be an error\n");
+		exit(1);
 	}
+
+	// determine stress triaxiality
+	double triax = -p / (vm + 0.01 * fabs(p)); // have softening in denominator to avoid divison by zero
+	if (triax < 0.0) {
+		triax = 0.0;
+	} else if (triax > 3.0) {
+		triax = 3.0;
+	}
+
+	// Johnson-Cook failure strain, dependence on stress triaxiality
+	double jc_failure_strain = d1 + d2 * exp(d3 * triax);
+
+	// include strain rate dependency if parameter d4 is defined and current plastic strain rate exceeds reference strain rate
+	if (d4 > 0.0) { //
+		if (epdot > epdot0) {
+			double epdot_ratio = epdot / epdot0;
+			jc_failure_strain *= (1.0 + d4 * log(epdot_ratio));
+			//printf("epsdot=%f, epsdot0=%f, factor = %f\n", epdot, epdot0, (1.0 + d4 * log(epdot_ratio)));
+			//exit(1);
+
+		}
+	}
+
+	return jc_failure_strain;
 
 }

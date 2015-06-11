@@ -73,7 +73,6 @@ public:
 	void ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_dev, const Matrix3d d_dev, Matrix3d &sigmaFinal_dev,
 			Matrix3d &sigma_dev_rate, double &plastic_strain_increment);
 	void ComputeDamage(const int i, const Matrix3d strain, const Matrix3d sigmaFinal, Matrix3d &sigma_damaged);
-	void spiky_kernel_and_derivative(const double h, const double r, double &wf, double &wfd);
 
 protected:
 	void allocate();
@@ -83,7 +82,6 @@ protected:
 	 * per-type arrays
 	 */
 	int *strengthModel, *eos;
-	int *failureModel;
 	double *onerad_dynamic, *onerad_frozen, *maxrad_dynamic, *maxrad_frozen;
 
 	/*
@@ -109,9 +107,7 @@ protected:
 	double cut_comm;
 
 	enum {
-		UPDATE_NONE = 5000,
-		UPDATE_CONSTANT_THRESHOLD = 5001,
-		UPDATE_PAIRWISE_RATIO = 5002,
+		UPDATE_NONE = 5000, UPDATE_CONSTANT_THRESHOLD = 5001, UPDATE_PAIRWISE_RATIO = 5002,
 	};
 
 	enum {
@@ -160,23 +156,37 @@ protected:
 		EOS_POLYNOMIAL_C4 = 42,
 		EOS_POLYNOMIAL_C5 = 43,
 		EOS_POLYNOMIAL_C6 = 44,
-		MAX_KEY_VALUE = 45
+
+		FAILURE_JC_D1 = 45,
+		FAILURE_JC_D2 = 46,
+		FAILURE_JC_D3 = 47,
+		FAILURE_JC_D4 = 48,
+		FAILURE_JC_EPDOT0 = 49,
+
+		MAX_KEY_VALUE = 50
 	};
 
-	// enumeration of failure / damage models
-	enum {
-		FAILURE_NONE = 4000,
-		FAILURE_MAX_PRINCIPAL_STRAIN = 4001,
-		FAILURE_MAX_PRINCIPAL_STRESS = 4002,
-		FAILURE_MAX_PLASTIC_STRAIN = 4003,
-		FAILURE_JOHNSON_COOK = 4004,
-		FAILURE_MAX_PAIRWISE_STRAIN = 4005
-	};
+	struct failure_types { // this is defined per type and determines which failure/damage model is active
+		bool failure_none;
+		bool failure_max_principal_strain;
+		bool failure_max_principal_stress;
+		bool failure_max_plastic_strain;
+		bool failure_johnson_cook;
+		bool failure_max_pairwise_strain;
+		bool integration_point_wise; // true if failure model applies to stress/strain state of integration point
 
-	// C++ std dictionary to hold material model settings per particle type
-	typedef std::map<std::pair<std::string, int>, double> Dict;
-	Dict matProp2;
-	//typedef Dict::const_iterator It;
+		failure_types() {
+			failure_none = true;
+			failure_max_principal_strain = false;
+			failure_max_principal_stress = false;
+			failure_max_plastic_strain = false;
+			failure_johnson_cook = false;
+			failure_max_pairwise_strain = false;
+			integration_point_wise = false;
+			//printf("constructed failure type\n");
+		}
+	};
+	failure_types *failureModel;
 
 	int ifix_tlsph;
 	int update_method;
@@ -184,8 +194,6 @@ protected:
 	class FixSMD_TLSPH_ReferenceConfiguration *fix_tlsph_reference_configuration;
 
 private:
-	double SafeLookup(std::string str, int itype);
-	bool CheckKeywordPresent(std::string str, int itype);
 	double **Lookup; // holds per-type material parameters for the quantities defined in enum statement above.
 	bool first; // if first is true, do not perform any computations, beacuse reference configuration is not ready yet.
 };

@@ -58,7 +58,7 @@ using namespace LAMMPS_NS;
 using namespace SMD_Math;
 
 #define JAUMANN false
-#define DETF_MIN 0.01 // maximum compression deformation allowed
+#define DETF_MIN 0.1 // maximum compression deformation allowed
 #define DETF_MAX 40.0 // maximum tension deformation allowed
 #define TLSPH_DEBUG 0
 #define PLASTIC_STRAIN_AVERAGE_WINDOW 100.0
@@ -70,7 +70,8 @@ PairTlsph::PairTlsph(LAMMPS *lmp) :
 
 	onerad_dynamic = onerad_frozen = maxrad_dynamic = maxrad_frozen = NULL;
 
-	strengthModel = eos = failureModel = NULL;
+	failureModel = NULL;
+	strengthModel = eos = NULL;
 
 	nmax = 0; // make sure no atom on this proc such that initial memory allocation is correct
 	Fdot = Fincr = K = PK1 = NULL;
@@ -104,7 +105,6 @@ PairTlsph::~PairTlsph() {
 		memory->destroy(cutsq);
 		memory->destroy(strengthModel);
 		memory->destroy(eos);
-		memory->destroy(failureModel);
 		memory->destroy(Lookup);
 
 		delete[] onerad_dynamic;
@@ -128,6 +128,8 @@ PairTlsph::~PairTlsph() {
 		delete[] CauchyStress;
 		delete[] hourglass_error;
 		delete[] particle_dt;
+
+		delete[] failureModel;
 	}
 }
 
@@ -352,7 +354,7 @@ void PairTlsph::PreCompute() {
 					cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
 					cout << "Here is matrix K-1:" << endl << K[i] << endl;
 					mol[i] = -1;
-					//error->one(FLERR, "");
+					error->one(FLERR, "");
 				} else if (detF[i] > DETF_MAX) {
 					printf("deleting particle [%d] because det(F)=%f is larger than limit=%f\n", tag[i], Fincr[i].determinant(),
 					DETF_MAX);
@@ -361,7 +363,7 @@ void PairTlsph::PreCompute() {
 					cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
 					cout << "Here is matrix K-1:" << endl << K[i] << endl;
 					mol[i] = -1;
-					//error->one(FLERR, "");
+					error->one(FLERR, "");
 				}
 
 				if (mol[i] > 0) {
@@ -517,6 +519,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
 	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
+	float **damage_onset_strain = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -629,7 +632,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				 */
 				delta = gamma.dot(dx);
 				if (delVdotDelR * delta < 0.0) {
-					hg_err = MAX(hg_err, 0.1); // limit hg_err to avoid numerical instabilities
+					hg_err = MAX(hg_err, 0.05); // limit hg_err to avoid numerical instabilities
 					hg_mag = -hg_err * Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] * Lookup[SIGNAL_VELOCITY][itype] * mu_ij
 							/ Lookup[REFERENCE_DENSITY][itype]; // this has units of pressure
 				} else {
@@ -651,7 +654,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			}
 
 			// scale hourglass force with damage
-			f_hg *= (1.0 - damage[i]) * (1.0 - damage[j]);
+			//f_hg *= (1.0 - damage[i]) * (1.0 - damage[j]);
 
 			// sum stress, viscous, and hourglass forces
 			sumForces = f_stress + f_visc + f_hg;
@@ -691,7 +694,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			 * each other, i.e., are in a tensile mode.
 			 */
 
-			if (failureModel[itype] == FAILURE_MAX_PAIRWISE_STRAIN) {
+			if (failureModel[itype].failure_max_pairwise_strain) {
 
 				strain1d = (r - r0) / r0;
 				if (domain->dimension == 2) {
@@ -710,6 +713,27 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
 					partner[i][jj] = 0;
 				}
+			}
+
+			if (failureModel[itype].integration_point_wise) {
+
+				strain1d = (r - r0) / r0;
+				if (damage_onset_strain[i][jj] < 0.0) { // check if damage onset needs to be defined
+					if ((damage[i] == 1.0) && (damage[j] == 1.0)) {
+						if (strain1d > 0.0) {
+							damage_onset_strain[i][jj] = strain1d;
+						}
+					}
+				} else { // damage_onset strain is already defined
+					if (strain1d > damage_onset_strain[i][jj]) {
+						softening_strain = 0.1 * damage_onset_strain[i][jj];
+						degradation_ij[i][jj] = (strain1d - damage_onset_strain[i][jj]) / softening_strain;
+						if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
+							partner[i][jj] = 0;
+						}
+					}
+				}
+
 			}
 
 		}
@@ -849,7 +873,7 @@ void PairTlsph::AssembleStress() {
 				/*
 				 *  Damage due to failure criteria.
 				 */
-				if ((failureModel[itype] != FAILURE_NONE) && (failureModel[itype] != FAILURE_MAX_PAIRWISE_STRAIN)) {
+				if (failureModel[itype].integration_point_wise) {
 					ComputeDamage(i, strain, T, T_damaged);
 					T = T_damaged;
 				}
@@ -920,7 +944,8 @@ void PairTlsph::allocate() {
 
 	memory->create(strengthModel, n + 1, "pair:strengthmodel");
 	memory->create(eos, n + 1, "pair:eosmodel");
-	memory->create(failureModel, n + 1, "pair:failuremodel");
+//memory->create(failureModel, n + 1, "pair:failuremodel"); // allocated now
+	failureModel = new failure_types[n + 1];
 	memory->create(Lookup, MAX_KEY_VALUE, n + 1, "pair:LookupTable");
 
 	memory->create(cutsq, n + 1, n + 1, "pair:cutsq"); // always needs to be allocated, even with granular neighborlist
@@ -1045,7 +1070,6 @@ void PairTlsph::coeff(int narg, char **arg) {
 // set all eos, strength and failure models to inactive by default
 	eos[itype] = EOS_NONE;
 	strengthModel[itype] = STRENGTH_NONE;
-	failureModel[itype] = FAILURE_NONE;
 
 	if (comm->me == 0) {
 		printf(
@@ -1495,7 +1519,8 @@ void PairTlsph::coeff(int narg, char **arg) {
 				error->all(FLERR, str);
 			}
 
-			failureModel[itype] = FAILURE_MAX_PLASTIC_STRAIN;
+			failureModel[itype].failure_max_plastic_strain = true;
+			failureModel[itype].integration_point_wise = true;
 			Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype] = force->numeric(FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
@@ -1538,7 +1563,8 @@ void PairTlsph::coeff(int narg, char **arg) {
 				error->all(FLERR, str);
 			}
 
-			failureModel[itype] = FAILURE_MAX_PAIRWISE_STRAIN;
+			failureModel[itype].failure_max_pairwise_strain = true;
+			failureModel[itype].integration_point_wise = true;
 			Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype] = force->numeric(FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
@@ -1577,7 +1603,8 @@ void PairTlsph::coeff(int narg, char **arg) {
 				error->all(FLERR, str);
 			}
 
-			failureModel[itype] = FAILURE_MAX_PRINCIPAL_STRAIN;
+			failureModel[itype].failure_max_principal_strain = true;
+			failureModel[itype].integration_point_wise = true;
 			Lookup[FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD][itype] = force->numeric(FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
@@ -1612,19 +1639,22 @@ void PairTlsph::coeff(int narg, char **arg) {
 				error->all(FLERR, str);
 			}
 
-			matProp2[std::make_pair("failure_JC_d1", itype)] = force->numeric(FLERR, arg[ioffset + 1]);
-			matProp2[std::make_pair("failure_JC_d2", itype)] = force->numeric(FLERR, arg[ioffset + 2]);
-			matProp2[std::make_pair("failure_JC_d3", itype)] = force->numeric(FLERR, arg[ioffset + 3]);
-			matProp2[std::make_pair("failure_JC_d4", itype)] = force->numeric(FLERR, arg[ioffset + 4]);
-			matProp2[std::make_pair("failure_JC_epdot0", itype)] = force->numeric(FLERR, arg[ioffset + 5]);
+			failureModel[itype].failure_johnson_cook = true;
+			failureModel[itype].integration_point_wise = true;
+
+			Lookup[FAILURE_JC_D1][itype] = force->numeric(FLERR, arg[ioffset + 1]);
+			Lookup[FAILURE_JC_D2][itype] = force->numeric(FLERR, arg[ioffset + 2]);
+			Lookup[FAILURE_JC_D3][itype] = force->numeric(FLERR, arg[ioffset + 3]);
+			Lookup[FAILURE_JC_D4][itype] = force->numeric(FLERR, arg[ioffset + 4]);
+			Lookup[FAILURE_JC_EPDOT0][itype] = force->numeric(FLERR, arg[ioffset + 5]);
 
 			if (comm->me == 0) {
 				printf("\n%60s\n", "Johnson-Cook failure criterion");
-				printf("%60s : %g\n", "parameter d1", SafeLookup("failure_JC_d1", itype));
-				printf("%60s : %g\n", "parameter d2", SafeLookup("failure_JC_d2", itype));
-				printf("%60s : %g\n", "parameter d3", SafeLookup("failure_JC_d3", itype));
-				printf("%60s : %g\n", "parameter d4", SafeLookup("failure_JC_d4", itype));
-				printf("%60s : %g\n", "reference plastic strain rate", SafeLookup("failure_JC_epdot0", itype));
+				printf("%60s : %g\n", "parameter d1", Lookup[FAILURE_JC_D1][itype]);
+				printf("%60s : %g\n", "parameter d2", Lookup[FAILURE_JC_D2][itype]);
+				printf("%60s : %g\n", "parameter d3", Lookup[FAILURE_JC_D3][itype]);
+				printf("%60s : %g\n", "parameter d4", Lookup[FAILURE_JC_D4][itype]);
+				printf("%60s : %g\n", "reference plastic strain rate", Lookup[FAILURE_JC_EPDOT0][itype]);
 			}
 
 		} else if (strcmp(arg[ioffset], "*FAILURE_MAX_PRINCIPAL_STRESS") == 0) {
@@ -1658,7 +1688,8 @@ void PairTlsph::coeff(int narg, char **arg) {
 				error->all(FLERR, str);
 			}
 
-			failureModel[itype] = FAILURE_MAX_PRINCIPAL_STRESS;
+			failureModel[itype].failure_max_principal_stress = true;
+			failureModel[itype].integration_point_wise = true;
 			Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype] = force->numeric(FLERR, arg[ioffset + 1]);
 
 			if (comm->me == 0) {
@@ -1981,35 +2012,6 @@ void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt,
 	}
 }
 
-double PairTlsph::SafeLookup(std::string str, int itype) {
-	cout << "string passed to lookup: " << str.c_str() << endl;
-	error->all(FLERR, "");
-	char msg[128];
-	if (matProp2.count(std::make_pair(str, itype)) == 1) {
-		cout << "returning look up value %d " << matProp2[std::make_pair(str, itype)] << endl;
-		return matProp2[std::make_pair(str, itype)];
-	} else {
-		sprintf(msg, "failed to lookup indentifier [%s] for particle type %d", str.c_str(), itype);
-		error->all(FLERR, msg);
-	}
-	return 1.0;
-}
-
-bool PairTlsph::CheckKeywordPresent(std::string str, int itype) {
-	int count = matProp2.count(std::make_pair(str, itype));
-	if (count == 0) {
-		return false;
-	} else if (count == 1) {
-		return true;
-	} else {
-		char msg[128];
-		cout << "keyword: " << str << endl;
-		sprintf(msg, "ambiguous count for keyword: %d times present\n", count);
-		error->all(FLERR, msg);
-	}
-	return false;
-}
-
 /* ----------------------------------------------------------------------
  compute pressure. Called from AssembleStress().
  ------------------------------------------------------------------------- */
@@ -2116,61 +2118,54 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
  ------------------------------------------------------------------------- */
 void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d stress, Matrix3d &stress_damaged) {
 	double *eff_plastic_strain = atom->eff_plastic_strain;
-	//double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
+	double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
+	double *radius = atom->radius;
 	double *damage = atom->damage;
 	int *type = atom->type;
 	int itype = type[i];
 	bool damage_flag = false;
-	double damage_gap;
-	Matrix3d eye;
+	double damage_gap, jc_failure_strain, damage_rate;
+	Matrix3d eye, stress_deviator;
 
 	eye.setIdentity();
+	stress_deviator = Deviator(stress);
 	double pressure = -stress.trace();
 
-	switch (failureModel[itype]) {
-	case FAILURE_MAX_PRINCIPAL_STRESS:
+	if (failureModel[itype].failure_max_principal_stress) {
 		error->one(FLERR, "not yet implemented");
 		/*
 		 * maximum stress failure criterion:
 		 */
 		damage_flag = IsotropicMaxStressDamage(stress, Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype]);
-		break;
-	case FAILURE_MAX_PRINCIPAL_STRAIN:
+	} else if (failureModel[itype].failure_max_principal_strain) {
 		error->one(FLERR, "not yet implemented");
 		/*
 		 * maximum strain failure criterion:
 		 */
 		damage_flag = IsotropicMaxStrainDamage(strain, Lookup[FAILURE_MAX_PRINCIPAL_STRAIN_THRESHOLD][itype]);
-		break;
-
-	case FAILURE_MAX_PLASTIC_STRAIN:
+	} else if (failureModel[itype].failure_max_plastic_strain) {
 		if (eff_plastic_strain[i] >= Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) {
 			damage_flag = true;
 			damage_gap = 0.1 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
 			damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
 		}
-		break;
+	} else if (failureModel[itype].failure_johnson_cook) {
+		jc_failure_strain = JohnsonCookFailureStrain(pressure, stress_deviator, Lookup[FAILURE_JC_D1][itype],
+				Lookup[FAILURE_JC_D2][itype], Lookup[FAILURE_JC_D3][itype], Lookup[FAILURE_JC_D4][itype],
+				Lookup[FAILURE_JC_EPDOT0][itype], eff_plastic_strain_rate[i]);
 
-	case FAILURE_JOHNSON_COOK:
+		//cout << "plastic strain increment is " << plastic_strain_increment << "  jc fs is " << jc_failure_strain << endl;
+		//printf("JC failure strain is: %f\n", jc_failure_strain);
 
-		error->one(FLERR, "not yet implemented");
-//		jc_failure_strain = JohnsonCookFailureStrain(pFinal, sigmaFinal_dev, SafeLookup("failure_JC_d1", itype),
-//				SafeLookup("failure_JC_d2", itype), SafeLookup("failure_JC_d3", itype), SafeLookup("failure_JC_d4", itype),
-//				SafeLookup("failure_JC_epdot0", itype), eff_plastic_strain_rate[i]);
-//
-////cout << "plastic strain increment is " << plastic_strain_increment << "  jc fs is " << jc_failure_strain << endl;
-//		if (eff_plastic_strain[i] / jc_failure_strain > 1.0) {
-//			damage_flag = true;
-//		}
-		break;
-
-	default:
-		error->one(FLERR, "unknown failure model.");
-		break;
+		if (eff_plastic_strain[i] >= jc_failure_strain) {
+			damage_flag = true;
+			damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (1.0 * radius[i]);
+			damage[i] += damage_rate * update->dt;
+		}
 	}
 
 	/*
-	 * Apply damage -- this is deactivated for now
+	 * Apply damage to integration point
 	 */
 
 	damage[i] = MIN(damage[i], 1.0);
@@ -2183,25 +2178,3 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 
 }
 
-void PairTlsph::spiky_kernel_and_derivative(const double h, const double r, double &wf, double &wfd) {
-
-	/*
-	 * Spiky kernel
-	 */
-
-	if (r >= h) {
-//printf("r=%f > h=%f in Spiky kernel\n", r, h);
-		wf = wfd = 0.0;
-		return;
-	}
-	double hr = h - r;		// [m]
-	if (domain->dimension == 2) {
-		double n = 0.3141592654e0 * h * h * h * h * h; // [m^5]
-		wfd = -3.0e0 * hr * hr / n; // [m*m/m^5] = [1/m^3] ==> correct for dW/dr in 2D
-		wf = -0.333333333333e0 * hr * wfd; // [m/m^3] ==> [1/m^2] correct for W in 2D
-	} else {
-		wfd = -14.0323944878e0 * hr * hr / (h * h * h * h * h * h); // [1/m^4] ==> correct for dW/dr in 3D
-		wf = -0.333333333333e0 * hr * wfd; // [m/m^4] ==> [1/m^3] correct for W in 3D
-	}
-
-}
