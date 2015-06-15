@@ -21,12 +21,9 @@ compute 1 all smd/damage :pre
 
 [Description:]
 
-Define a computation that calculates the damage of the per-pair
-interaction. The failure model is based on the plastic strain. If
-the interacting particles exceed the plastic failure strain, a
-degradation (damage) ocurres based on the evolution of the plastic
-strain. This applies only for particles under tension mode, which
-means that the particles move away of each other.
+Define a computation that calculates the damage status of SPH particles
+according to the damage model which is defined via the SMD SPH pair styles, e.g., the maximum plastic strain failure criterion.
+interaction. 
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 
@@ -37,7 +34,7 @@ any command that uses per-particle values from a compute as input.  See
 "How-to discussions, section 6.15"_Section_howto.html#howto_15
 for an overview of LAMMPS output options.
 
-The per-particle values will be given dimensionless. See "units"_units.html.
+The per-particle values are dimensionless an in the range of zero to one.
 
 [Restrictions:]
 

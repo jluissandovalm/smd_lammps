@@ -21,7 +21,7 @@ compute 1 all smd/tlsph_strain :pre
 
 [Description:]
 
-Define a computation that calculates the strain tensor.
+Define a computation that calculates the Green-Lagrange strain tensor for particles interacting via the Total-Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
@@ -34,6 +34,9 @@ from a compute as input.  See
  for an overview of LAMMPS output options.
 
 The per-particle tensor values will be given dimensionless. See "units"_units.html.
+
+The per-particle vector has 6 entries, corresponding to the xx, yy, zz, xy, xz, yz components
+of the symmetric strain tensor.
 
 [Restrictions:]
 

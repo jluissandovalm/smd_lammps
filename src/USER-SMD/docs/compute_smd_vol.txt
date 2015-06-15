@@ -21,7 +21,8 @@ compute 1 all smd/vol :pre
 
 [Description:]
 
-Define a computation that calculates the volume of the particles.
+Define a computation that provides the per-particle volume and the sum of the per-particle volumes of the
+group for which the fix is defined.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in
 LAMMPS.
@@ -33,7 +34,10 @@ any command that uses per-particle values from a compute as input.  See
 "How-to discussions, section 6.15"_Section_howto.html#howto_15
 for an overview of LAMMPS output options.
 
-The per-particle vector values will be given in "units"_units.html of distance power three.
+The per-particle vector values will be given in "units"_units.html of volume.
+
+Additionally, the compute returns a scalar, which is the sum of the per-particle volumes of the
+group for which the fix is defined.
 
 [Restrictions:]
 

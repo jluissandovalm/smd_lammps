@@ -21,7 +21,12 @@ compute 1 all smd/tlsph_dt :pre
 
 [Description:]
 
-Define a computation that calculates the time step.
+Define a computation that provides the CFL-stable time increment per particle.
+This time increment is essentially given by the speed of sound, divided by the SPH smoothing length.
+Because both the speed of sound and the smoothing length typically change during the course of a simulation,
+the stable time increment needs to be recomputed every time step.
+This calculation is performed automatically in the relevant SPH pair styles and this compute only serves to make the
+stable time increment accessible for output purposes.    
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
@@ -40,7 +45,7 @@ This compute is part of the USER-SMD package.  It is only enabled if
 LAMMPS was built with that package.  See the "Making LAMMPS"_Section_start.html#start_3
 section for more info.
 
-This quantity will be computed only for particles which interact with tlsph pair style.
+This compute can only be used for particles interaction with the Total-Lagrangian SPH pair style.
 
 [Related commands:]
 

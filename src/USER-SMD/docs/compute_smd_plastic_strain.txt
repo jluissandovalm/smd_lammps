@@ -21,7 +21,9 @@ compute 1 all smd/plastic_strain :pre
 
 [Description:]
 
-Define a computation that calculates the equivalent plastic strain.
+Define a computation that calculates the equivalent plastic strain per particle.
+This command is only meaningful if a material model with plasticity is defined.
+
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 

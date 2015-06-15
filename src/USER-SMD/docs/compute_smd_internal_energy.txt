@@ -21,9 +21,7 @@ compute 1 all smd/internal_energy :pre
 
 [Description:]
 
-Define a computation that calculates the individual internal energy,
-which is defined as the sum of the potential energy and the heat, this
-quantity is also defined as Entalpy.
+Define a computation that calculates the per-particle enthalpy, i.e., the sum of potential energy and heat.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 

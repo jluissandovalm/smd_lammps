@@ -27,7 +27,8 @@ the particles i and j. Ideally, if the deformation gradient is exact,
 and there exists a unique mapping between all particles' positions
 within the neighborhood of the central node and the deformation gradient,
 the approximated relative separation will coincide with the actual relative
-separation of the particles i and j in the deformed configuration. 
+separation of the particles i and j in the deformed configuration.
+This compute is only really useful for debugging the hourglass control mechanim.  
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 
@@ -38,7 +39,7 @@ any command that uses per-particle values from a compute as input.  See
 "How-to discussions, section 6.15"_Section_howto.html#howto_15
 for an overview of LAMMPS output options.
 
-The per-particle vector values will be given dimensionless. See "units"_units.html.
+The per-particle vector values will are dimensionless. See "units"_units.html.
 
 [Restrictions:]
 

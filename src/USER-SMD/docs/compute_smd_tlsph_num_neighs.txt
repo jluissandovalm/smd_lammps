@@ -22,7 +22,7 @@ compute 1 all smd/tlsph_num_neighs :pre
 [Description:]
 
 Define a computation that calculates the number of particles
-inside of the smoothing radius.
+inside of the smoothing radius for particles interacting via the Total-Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 

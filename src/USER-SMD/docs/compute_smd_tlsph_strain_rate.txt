@@ -21,7 +21,7 @@ compute 1 all smd/tlsph_strain_rate :pre
 
 [Description:]
 
-Define a computation that calculates the rate of the strain tensor.
+Define a computation that calculates the rate of the strain tensor for particles interacting via the Total-Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
@@ -33,6 +33,9 @@ accessed by any command that uses per-particle values from a compute as input. S
 for an overview of LAMMPS output options.
 
 The values will be given in "units"_units.html of one over time.
+
+The per-particle vector has 6 entries, corresponding to the xx, yy, zz, xy, xz, yz components
+of the symmetric strain rate tensor.
 
 [Restrictions:]
 

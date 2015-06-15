@@ -21,7 +21,8 @@ compute 1 all smd/ulsph_strain :pre
 
 [Description:]
 
-Define a computation that calculates the strain tensor... for the Total-Lagrange-SPH formulation.
+Define a computation that calculates the logarithmic strain tensor.
+for particles interacting via the updated Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
@@ -31,6 +32,9 @@ This compute calculates a per-particle tensor, which can be accessed by
 any command that uses per-particle values from a compute as input.  See
 "Section_howto 15"_Section_howto.html#howto_15 for an overview of
 LAMMPS output options.
+
+The per-particle vector has 6 entries, corresponding to the xx, yy, zz, xy, xz, yz components
+of the symmetric strain rate tensor.
 
 The per-particle tensor values will be given dimensionless, see "units"_units.html.
 

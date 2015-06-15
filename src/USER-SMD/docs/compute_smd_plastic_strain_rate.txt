@@ -22,6 +22,7 @@ compute 1 all smd/plastic_strain_rate :pre
 [Description:]
 
 Define a computation that calculates the rate of the equivalent plastic strain.
+This command is only meaningful if a material model with plasticity is defined.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 
