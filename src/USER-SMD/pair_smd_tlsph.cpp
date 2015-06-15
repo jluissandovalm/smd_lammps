@@ -164,7 +164,7 @@ void PairTlsph::PreCompute() {
 	Vector3d xi, xj, vi, vj, vinti, vintj, x0i, x0j, dvint, du;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 	bool Shape_Matrix_Inversion_Success;
-	SelfAdjointEigenSolver < Matrix2d > es;
+	SelfAdjointEigenSolver<Matrix2d> es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	eye.setIdentity();
@@ -317,18 +317,18 @@ void PairTlsph::PreCompute() {
 								&& (fabs(es3d.eigenvalues()(2)) > 1.0e-4)) {
 							Shape_Matrix_Inversion_Success = true;
 						} else {
-							cout << endl << "These are the eigenvalues of K: " << endl << es3d.eigenvalues() << endl;
+							//cout << endl << "These are the eigenvalues of K: " << endl << es3d.eigenvalues() << endl;
 						}
 					} else {
-						printf("not attempting inverse of 3d K because determinant=%g is too small\n", K[i].determinant());
+						//printf("not attempting inverse of 3d K because determinant=%g is too small\n", K[i].determinant());
 					}
 
 					if (Shape_Matrix_Inversion_Success) {
 						K[i] = K[i].inverse().eval();
 					} else {
-						cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
-						cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
-						printf("this is the determinant of K %g\n", K[i].determinant());
+						//cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
+						//cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
+						//printf("this is the determinant of K %g\n", K[i].determinant());
 						K[i].setIdentity();
 						//error->one(FLERR, "");
 					}
@@ -654,7 +654,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			}
 
 			// scale hourglass force with damage
-			//f_hg *= (1.0 - damage[i]) * (1.0 - damage[j]);
+			f_hg *= (1.0 - damage[i]) * (1.0 - damage[j]);
 
 			// sum stress, viscous, and hourglass forces
 			sumForces = f_stress + f_visc + f_hg;
@@ -799,12 +799,13 @@ void PairTlsph::AssembleStress() {
 				sigmaInitial(2, 0) = sigmaInitial(0, 2);
 				sigmaInitial(2, 1) = sigmaInitial(1, 2);
 
+				//cout << "this is sigma initial" << endl << sigmaInitial << endl;
+
 				pInitial = sigmaInitial.trace() / 3.0; // initial pressure, isotropic part of initial stress
 				sigmaInitial_dev = Deviator(sigmaInitial);
 				d_iso = d[i].trace(); // volumetric part of stretch rate
 				d_dev = Deviator(d[i]); // deviatoric part of stretch rate
 				strain = 0.5 * (Fincr[i].transpose() * Fincr[i] - eye);
-
 				mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
 				rho = rmass[i] / (detF[i] * vfrac[i]); // current mass density
 				vol_specific_energy = mass_specific_energy * rho; // energy per current volume
@@ -819,7 +820,9 @@ void PairTlsph::AssembleStress() {
 				 * material strength
 				 */
 
+				//cout << "this is the strain deviator rate" << endl << d_dev << endl;
 				ComputeStressDeviator(i, sigmaInitial_dev, d_dev, sigmaFinal_dev, sigma_dev_rate, plastic_strain_increment);
+				//cout << "this is the stress deviator rate" << endl << sigma_dev_rate << endl;
 
 				// keep a rolling average of the plastic strain rate over the last 100 or so timesteps
 				eff_plastic_strain[i] += plastic_strain_increment;
@@ -873,6 +876,9 @@ void PairTlsph::AssembleStress() {
 				/*
 				 *  Damage due to failure criteria.
 				 */
+
+				//cout << "this is T" << T << endl;
+				//cout << "this is Fincr" << Fincr[i] << endl;
 				if (failureModel[itype].integration_point_wise) {
 					ComputeDamage(i, strain, T, T_damaged);
 					T = T_damaged;
@@ -2150,6 +2156,9 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 			damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
 		}
 	} else if (failureModel[itype].failure_johnson_cook) {
+
+		//cout << "this is stress deviator" << stress_deviator << endl;
+
 		jc_failure_strain = JohnsonCookFailureStrain(pressure, stress_deviator, Lookup[FAILURE_JC_D1][itype],
 				Lookup[FAILURE_JC_D2][itype], Lookup[FAILURE_JC_D3][itype], Lookup[FAILURE_JC_D4][itype],
 				Lookup[FAILURE_JC_EPDOT0][itype], eff_plastic_strain_rate[i]);
@@ -2159,7 +2168,7 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 
 		if (eff_plastic_strain[i] >= jc_failure_strain) {
 			damage_flag = true;
-			damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (1.0 * radius[i]);
+			damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (100.0 * radius[i]);
 			damage[i] += damage_rate * update->dt;
 		}
 	}
@@ -2170,11 +2179,11 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 
 	damage[i] = MIN(damage[i], 1.0);
 
-	if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
-		stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
-	} else { // tension: particle has reduced tensile and shear load bearing capability
-		stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
-	}
+	//if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
+	//	stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
+	//} else { // tension: particle has reduced tensile and shear load bearing capability
+	stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
+	//}
 
 }
 

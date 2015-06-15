@@ -318,7 +318,7 @@ void JohnsonCookStrength(const double G, const double cp, const double espec, co
 	epdot_ratio = MAX(epdot_ratio, 1.0);
 	//printf("current temperature delta is %f, TH=%f\n", deltaT, TH);
 
-	yieldStress = (A + B * pow(ep, a)) * (1.0 + C * log(epdot_ratio)) * (1.0 - pow(TH, M));
+	yieldStress = (A + B * pow(ep, a)) * (1.0 + C * log(epdot_ratio)); // * (1.0 - pow(TH, M));
 
 	/*
 	 * deviatoric rate of unrotated stress
@@ -435,14 +435,17 @@ bool IsotropicMaxStressDamage(const Matrix3d S, const double maxStress) {
 double JohnsonCookFailureStrain(const double p, const Matrix3d Sdev, const double d1, const double d2, const double d3,
 		const double d4, const double epdot0, const double epdot) {
 
+
+
 	double vm = sqrt(3. / 2.) * Sdev.norm(); // von-Mises equivalent stress
 	if (vm < 0.0) {
-		printf("vm < 0.0, surely must be an error\n");
+		cout << "this is sdev " << endl << Sdev << endl;
+		printf("vm=%f < 0.0, surely must be an error\n", vm);
 		exit(1);
 	}
 
 	// determine stress triaxiality
-	double triax = -p / (vm + 0.01 * fabs(p)); // have softening in denominator to avoid divison by zero
+	double triax = p / (vm + 0.01 * fabs(p)); // have softening in denominator to avoid divison by zero
 	if (triax < 0.0) {
 		triax = 0.0;
 	} else if (triax > 3.0) {

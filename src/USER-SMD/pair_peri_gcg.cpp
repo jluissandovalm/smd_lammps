@@ -308,14 +308,26 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 			else
 				fbond = 0.0;
 
+			// artificial viscosity -- alpha is dimensionless
+			delvelx = vxtmp - v[j][0];
+			delvely = vytmp - v[j][1];
+			delvelz = vztmp - v[j][2];
+			delVdotDelR = delx * delvelx + dely * delvely + delz * delvelz;
+
+			jvol = vfrac[j];
+			c0 = sqrt(bulkmodulus[itype][jtype] / (0.5 * (rmass[i] / ivol + rmass[j] / jvol))); // soundspeed
+			fvisc = -alpha[itype][jtype] * c0 * 0.5 * (rmass[i] + rmass[j]) * delVdotDelR / (rsq * r);
+
+			fpair = fbond + fvisc;
+
 			// project force -- missing factor of r is recovered here as delx, dely ... are not unit vectors
-			f[i][0] += delx * fbond;
-			f[i][1] += dely * fbond;
-			f[i][2] += delz * fbond;
+			f[i][0] += delx * fpair;
+			f[i][1] += dely * fpair;
+			f[i][2] += delz * fpair;
 
 			if (evflag) {
 				// since I-J is double counted, set newton off & use 1/2 factor and I,I
-				ev_tally(i, i, nlocal, 0, 0.5 * evdwl, 0.0, 0.5 * fbond, delx, dely, delz);
+				ev_tally(i, i, nlocal, 0, 0.5 * evdwl, 0.0, 0.5 * fpair, delx, dely, delz);
 				//printf("broken evdwl=%f, norm = %f %f\n", evdwl, vinter[i], vinter[j]);
 			}
 

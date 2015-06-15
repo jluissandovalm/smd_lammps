@@ -39,7 +39,7 @@ group           tlsph union all
 velocity        top set  ${vel} 0 0 sum no units box
 velocity        bot set -${vel} 0 0 sum no units box
 
-pair_style      hybrid/overlay tlsph smd/hertz 0.5 # activate Total-Lagrangian SPH
+pair_style      hybrid/overlay tlsph *UPDATE_PAIRWISE 1000.1 smd/hertz 0.5 # activate Total-Lagrangian SPH
 #                           rh0    E    nu    Q1    Q2   hg    Cp
 pair_coeff      1 1 tlsph *COMMON ${rho} ${E} ${nu} 1.0  0.0   50 1.0 &
                 *LINEAR_PLASTICITY ${sigy} 0.0 &

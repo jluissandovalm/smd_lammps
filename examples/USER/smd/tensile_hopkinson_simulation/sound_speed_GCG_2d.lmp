@@ -4,7 +4,7 @@
 variable         l0 equal 1.0e0 # lattice spacing in mm
 variable         h equal 1.05*${l0} # horizon based on lattic spacing, plus fudge factor
 variable         K equal 10.0 # bulk modulus
-variable         visc equal 1.0
+variable         visc equal 10.0
 variable         smax equal 1.0
 variable         syield equal 10.0
 variable         G0 equal 0.0

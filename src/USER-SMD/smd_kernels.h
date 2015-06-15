@@ -123,6 +123,24 @@ static inline void Poly6Kernel(const double hsq, const double h, const double rs
 	}
 }
 
+/*
+ * M4 Prime Kernel
+ */
+
+static inline void M4PrimeKernel(const double s, double &wf) {
+	if (s < 1.0) {
+		//wf = 1.0 - 2.5 * s * s + (3./2.) * s * s * s;
+		wf = 1.0 - s * s *(2.5 -1.5 *s);
+	} else if (s < 2.0) {
+		//wf = 0.5 * (1.0 - s) * ((2.0 - s) * (2.0 - s));
+		wf = 2.0 + (-4.0 + (2.5 - 0.5 * s)*s)*s;
+	} else {
+		wf = 0.0;
+	}
 }
+
+}
+
+
 
 #endif /* SMD_KERNEL_FUNCTIONS_H_ */
