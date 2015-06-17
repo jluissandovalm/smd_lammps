@@ -8,7 +8,7 @@ variable 	h equal 2.01*${l0} # SPH smoothing kernel diameter
 variable 	vol_one equal ${l0}^2 # volume of one particle
 variable 	mass_one equal ${vol_one}*${rho} # mass of one particle
 variable 	skin equal 5*${l0} # Verlet list range
-variable 	vel equal 0.05 # pull velocity
+variable 	vel equal 0.001 # pull velocity
 units 		si # si means: a consistent system of units is used. Here: mm / GPa / ms
 dimension 2 	# this is a 2d plane-strain simulation
 boundary 	sm sm p # simulation box boundaries
@@ -57,6 +57,14 @@ pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 00.0 10 875e3 &
 		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
 		*END
 
+pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 00.0 10 875e3 &
+		*EOS_LINEAR &
+		*LINEAR_STRENGTH &
+		*END
+#JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} 293.15 502 ${JC_M} &
+#		*FAILURE_JOHNSON_COOK  -0.77 1.45  0.47 -0.5 1.0e-3 &
+#		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
+#		*END
 
 		#*FAILURE_MAX_PAIRWISE_STRAIN 1.0 &
 		#*LINEAR_PLASTICITY 0.2 0.0 &

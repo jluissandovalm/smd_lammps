@@ -77,7 +77,7 @@ void ShockEOS(double rho, double rho0, double e, double e0, double c0, double S,
 	double mu = rho / rho0 - 1.0;
 	double pH = rho0 * square(c0) * mu * (1.0 + mu) / square(1.0 - (S - 1.0) * mu);
 
-	pFinal = -(pH + rho * Gamma * (e - e0));
+	pFinal = (pH + rho * Gamma * (e - e0));
 
 	//printf("shock EOS: rho = %g, rho0 = %g, Gamma=%f, c0=%f, S=%f, e=%f, e0=%f\n", rho, rho0, Gamma, c0, S, e, e0);
 	//printf("pFinal = %f\n", pFinal);
@@ -104,8 +104,13 @@ void polynomialEOS(double rho, double rho0, double e, double C0, double C1, doub
 
 	double mu = rho / rho0 - 1.0;
 
-	pFinal = C0 + C1 * mu + C2 * mu * mu + C3 * mu * mu * mu + (C4 + C5 * mu + C6 * mu * mu) * e;
-	pFinal = -pFinal;
+	if (mu > 0.0) {
+		pFinal = C0 + C1 * mu + C2 * mu * mu + C3 * mu * mu * mu; // + (C4 + C5 * mu + C6 * mu * mu) * e;
+	} else {
+		pFinal = C0 + C1 * mu + C3 * mu * mu * mu; //  + (C4 + C5 * mu) * e;
+	}
+	pFinal = -pFinal; // we want the mean stress, not the pressure.
+
 
 	//printf("pFinal = %f\n", pFinal);
 	p_rate = (pFinal - pInitial) / dt;
