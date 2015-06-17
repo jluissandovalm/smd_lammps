@@ -263,14 +263,17 @@ void FixSMDSetVel::initial_integrate(int vflag) {
 				if (xstyle) {
 					v[i][0] = xvalue;
 					vest[i][0] = xvalue;
+					f[i][0] = 0.0;
 				}
 				if (ystyle) {
 					v[i][1] = yvalue;
 					vest[i][1] = yvalue;
+					f[i][1] = 0.0;
 				}
 				if (zstyle) {
 					v[i][2] = zvalue;
 					vest[i][2] = zvalue;
+					f[i][2] = 0.0;
 				}
 			}
 
@@ -304,20 +307,26 @@ void FixSMDSetVel::initial_integrate(int vflag) {
 				foriginal[2] += f[i][2];
 				if (xstyle == ATOM) {
 					vest[i][0] = v[i][0] = sforce[i][0];
+					f[i][0] = 0.0;
 				} else if (xstyle) {
 					vest[i][0] = v[i][0] = xvalue;
+					f[i][0] = 0.0;
 				}
 
 				if (ystyle == ATOM) {
 					vest[i][1] = v[i][1] = sforce[i][1];
+					f[i][1] = 0.0;
 				} else if (ystyle) {
 					vest[i][1] = v[i][1] = yvalue;
+					f[i][1] = 0.0;
 				}
 
 				if (zstyle == ATOM) {
 					vest[i][2] = v[i][2] = sforce[i][2];
+					f[i][2] = 0.0;
 				} else if (zstyle) {
 					vest[i][2] = v[i][2] = zvalue;
+					f[i][2] = 0.0;
 				}
 
 			}
