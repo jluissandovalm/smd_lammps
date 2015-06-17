@@ -734,10 +734,9 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 					}
 				} else { // damage_onset strain is already defined
 					if (strain1d > damage_onset_strain[i][jj]) {
-						softening_strain = 0.1 * damage_onset_strain[i][jj];
+						softening_strain = 1.0 * damage_onset_strain[i][jj];
 						degradation_ij[i][jj] = (strain1d - damage_onset_strain[i][jj]) / softening_strain;
 						degradation_ij[i][jj] = MIN(degradation_ij[i][jj], 1.0);
-
 						//if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
 						//	partner[i][jj] = 0;
 						//}
@@ -745,20 +744,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				}
 
 			}
-
-			//			if ((damage[i] > 0.99) && (damage[j] > 0.99)) {
-//				strain1d = (r - r0) / r0;
-//				if (strain1d > 0.0) {
-//					double damage_rate = strain1d * Lookup[SIGNAL_VELOCITY][itype] / (100.0 * radius[i]);
-//					degradation_ij[i][jj] += damage_rate * update->dt;
-//					degradation_ij[i][jj] = MIN(degradation_ij[i][jj], 1.0);
-//
-////					if (degradation_ij[i][jj] > 0.999) { // delete interaction if fully damaged
-////						partner[i][jj] = 0;
-////					}
-//				}
-//
-//			}
 		}
 	}
 
@@ -2191,7 +2176,7 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 
 		if (eff_plastic_strain[i] >= jc_failure_strain) {
 			damage_flag = true;
-			//damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (100.0 * radius[i]);
+			//damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (10.0 * radius[i]);
 			//damage[i] += damage_rate * update->dt;
 			damage[i] = 1.0;
 		}
