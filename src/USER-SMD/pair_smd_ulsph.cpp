@@ -472,7 +472,6 @@ void PairULSPH::PreCompute() {
 
 void PairULSPH::compute(int eflag, int vflag) {
 	double **x = atom->x;
-	double **x0 = atom->x0;
 	double **v = atom->vest;
 	double **vint = atom->v; // Velocity-Verlet algorithm velocities
 	double **f = atom->f;
@@ -481,13 +480,12 @@ void PairULSPH::compute(int eflag, int vflag) {
 	double *rmass = atom->rmass;
 	double *radius = atom->radius;
 	double *contact_radius = atom->contact_radius;
-	double *plastic_strain = atom->eff_plastic_strain;
 	double **atom_data9 = atom->smd_data_9;
 
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int i, j, ii, jj, jnum, itype, jtype, iDim, inum;
-	double r, wf, wfd, h, rSq, r0Sq, ivol, jvol;
+	double r, wf, wfd, h, rSq, ivol, jvol;
 	double mu_ij, c_ij, rho_ij;
 	double delVdotDelR, visc_magnitude, deltaE;
 	int *ilist, *jlist, *numneigh;
@@ -495,7 +493,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Vector3d fi, fj, dx, dv, f_stress, g, vinti, vintj, dvint;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
 	Vector3d gamma, f_hg, dx0, du_est, du;
-	double gamma_dot_dx, hg_mag, r_ref, weight, pi, pj, p;
+	double r_ref, weight, p;
 
 	// double ini_dist, weight;
 	// double *contact_radius = atom->contact_radius;
@@ -788,7 +786,7 @@ void PairULSPH::AssembleStressTensor() {
 	double G_eff = 0.0; // effective shear modulus
 	double K_eff; // effective bulk modulus
 	double M, p_wave_speed;
-	double rho, shear_rate, effectiveViscosity;
+	double rho, effectiveViscosity;
 	Matrix3d deltaStressDev;
 
 	dtCFL = 1.0e22;

@@ -164,7 +164,7 @@ void PairTlsph::PreCompute() {
 	Matrix2d K2d, K2di;
 	Vector3d xi, xj, vi, vj, vinti, vintj, x0i, x0j, dvint, du;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
-	bool Shape_Matrix_Inversion_Success;
+	bool Shape_Matrix_Inversion_Success, status;
 	SelfAdjointEigenSolver<Matrix2d> es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
@@ -312,14 +312,11 @@ void PairTlsph::PreCompute() {
 						//error->one(FLERR, "");
 					}
 				} else { // 3d
-					if (fabs(K[i].determinant()) > 1.0e-4) {
-						es3d.compute(K[i]);
-						if ((fabs(es3d.eigenvalues()(0)) > 1.0e-4) && (fabs(es3d.eigenvalues()(1)) > 1.0e-4)
-								&& (fabs(es3d.eigenvalues()(2)) > 1.0e-4)) {
-							Shape_Matrix_Inversion_Success = true;
-						} else {
-							//cout << endl << "These are the eigenvalues of K: " << endl << es3d.eigenvalues() << endl;
-						}
+
+					//printf("detK = %f\n", K[i].determinant());
+					// all K dets should be negative
+					if (K[i].determinant() < -1.0e-2) {
+						Shape_Matrix_Inversion_Success = true;
 					} else {
 						//printf("not attempting inverse of 3d K because determinant=%g is too small\n", K[i].determinant());
 					}
@@ -327,48 +324,21 @@ void PairTlsph::PreCompute() {
 					if (Shape_Matrix_Inversion_Success) {
 						K[i] = K[i].inverse().eval();
 					} else {
-						//cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
-						//cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
-						//printf("this is the determinant of K %g\n", K[i].determinant());
+						cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
+						cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
+						printf("this is the determinant of K %g\n", K[i].determinant());
 						K[i].setIdentity();
 						//error->one(FLERR, "");
+						mol[i] = -1;
 					}
 				} // end if 3d
-
-				//cout << "this is Fincr"  << Fincr[i] << endl;
 
 				Fdot[i] *= K[i];
 				Fincr[i] *= K[i];
 				Fincr[i] += eye; // we add the identity matrix because F = dx/dX = du/dX + I
-				FincrInv[i] = Fincr[i].inverse();
-				detF[i] = Fincr[i].determinant();
-
-				/*
-				 * make sure F stays within some limits
-				 */
-
-				if ((detF[i] < DETF_MIN) || (detF[i] > DETF_MAX)) {
-					printf("deleting particle [%d] because det(F)=%f is outside stable range %f -- %f \n", tag[i],
-							Fincr[i].determinant(),
-							DETF_MIN, DETF_MAX);
-					printf("nn = %d, damage=%f\n", numNeighsRefConfig[i], damage[i]);
-					cout << "Here is matrix F:" << endl << Fincr[i] << endl;
-					cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
-					cout << "Here is matrix K-1:" << endl << K[i] << endl;
-					mol[i] = -1;
-					//error->one(FLERR, "");
-				}
 
 				if (mol[i] > 0) {
-					// velocity gradient, see Pronto2d, eqn.(2.1.3)
-					L = Fdot[i] * FincrInv[i];
-
-					// symmetric (D) and asymmetric (W) parts of L
-					D[i] = 0.5 * (L + L.transpose());
-					W[i] = 0.5 * (L - L.transpose()); // spin tensor:: need this for Jaumann rate
-
 					if (JAUMANN) {
-						d[i] = D[i];
 						R[i].setIdentity(); // for Jaumann stress rate, we do not need a subsequent rotation back into the reference configuration
 					} else {
 
@@ -376,19 +346,52 @@ void PairTlsph::PreCompute() {
 						// stress in the unrotated frame of reference is denoted sigma (stress seen by an observer doing rigid body rotations along with the material)
 						// stress in the true frame of reference (a stationary observer) is denoted by T, "true stress"
 
-						// polar decomposition of the deformation gradient, F = R * U
-
-						PolDec(Fincr[i], &R[i], &U);
-
-						// unrotated rate-of-deformation tensor d, see right side of Pronto2d, eqn.(2.1.7)
-						d[i] = R[i].transpose() * D[i] * R[i];
+						status = PolDec(Fincr[i], R[i], U); // polar decomposition of the deformation gradient, F = R * U
+						if (!status) {
+							error->one(FLERR, "Polar decomposition of deformation gradient failed.\n");
+						}
 					}
+
+					detF[i] = Fincr[i].determinant();
+					FincrInv[i] = Fincr[i].inverse();
+
+					// velocity gradient
+					L = Fdot[i] * FincrInv[i];
+
+					// symmetric (D) and asymmetric (W) parts of L
+					D[i] = 0.5 * (L + L.transpose());
+					W[i] = 0.5 * (L - L.transpose()); // spin tensor:: need this for Jaumann rate
+
+					// unrotated rate-of-deformation tensor d, see right side of Pronto2d, eqn.(2.1.7)
+					d[i] = R[i].transpose() * D[i] * R[i];
+
+					// limit strain rate
+					double limit = 1.0e-3 * Lookup[SIGNAL_VELOCITY][itype] / radius[i];
+					d[i] = LimitEigenvalues(d[i], limit);
 
 					// normalize average velocity field around an integration point
 					if (shepardWeight[i] > 0.0) {
 						smoothVelDifference[i] /= shepardWeight[i];
 					} else {
 						smoothVelDifference[i].setZero();
+					}
+
+					/*
+					 * make sure F stays within some limits
+					 */
+
+					if ((detF[i] < DETF_MIN) || (detF[i] > DETF_MAX)) {
+						printf("deleting particle [%d] because det(F)=%f is outside stable range %f -- %f \n", tag[i],
+								Fincr[i].determinant(),
+								DETF_MIN, DETF_MAX);
+						printf("nn = %d, damage=%f\n", numNeighsRefConfig[i], damage[i]);
+						cout << "Here is matrix F:" << endl << Fincr[i] << endl;
+						cout << "Here is matrix F-1:" << endl << FincrInv[i] << endl;
+						cout << "Here is matrix K-1:" << endl << K[i] << endl;
+						cout << "Here is matrix K:" << endl << K[i].inverse() << endl;
+						cout << "Here is det of K" << endl << (K[i].inverse()).determinant() << endl;
+						mol[i] = -1;
+						//error->one(FLERR, "");
 					}
 
 				} // end if mol[i] > 0
@@ -400,13 +403,13 @@ void PairTlsph::PreCompute() {
 				D[i].setZero();
 				Fdot[i].setZero();
 				Fincr[i].setIdentity();
-				//smoothVel[i].setZero();
+				smoothVelDifference[i].setZero();
 				detF[i] = 1.0;
 				K[i].setIdentity();
 
-				//vint[i][0] = 0.0;
-				//vint[i][1] = 0.0;
-				//vint[i][2] = 0.0;
+				vint[i][0] = 0.0;
+				vint[i][1] = 0.0;
+				vint[i][2] = 0.0;
 			}
 		}  // end if setflag[itype]
 	} // end loop over i = 0 to nlocal
@@ -512,7 +515,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
 	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
-	float **damage_onset_strain = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
+	//float **damage_onset_strain = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -589,8 +592,8 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 
 			// scale the interaction according to the damage variable
 			scale = 1.0 - degradation_ij[i][jj];
-			wf = wf_list[i][jj]; // * scale;
-			wfd = wfd_list[i][jj]; // * scale;
+			wf = wf_list[i][jj] * scale;
+			wfd = wfd_list[i][jj] * scale;
 
 			g = (wfd / r0) * dx0; // uncorrected kernel gradient
 
@@ -665,7 +668,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 //			}
 
 			// sum stress, viscous, and hourglass forces
-			sumForces = scale * f_stress + f_visc + scale * f_hg; // + f_spring;
+			sumForces = f_stress + f_visc + f_hg; // + f_spring;
 
 			// energy rate -- project velocity onto force vector
 			deltaE = 0.5 * sumForces.dot(dv);
@@ -723,27 +726,43 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				}
 			}
 
-			if (failureModel[itype].integration_point_wise) {
+//			if (false) {
+//
+//				strain1d = (r - r0) / r0;
+//				if (damage_onset_strain[i][jj] < 0.0) { // check if damage onset needs to be defined
+//					if ((damage[i] == 1.0) && (damage[j] == 1.0)) {
+//						if (strain1d > 0.0) {
+//							damage_onset_strain[i][jj] = strain1d;
+//						}
+//					}
+//				} else { // damage_onset strain is already defined
+//					if (strain1d > damage_onset_strain[i][jj]) {
+//						softening_strain = 1.0 * damage_onset_strain[i][jj];
+//						degradation_ij[i][jj] = (strain1d - damage_onset_strain[i][jj]) / softening_strain;
+//						degradation_ij[i][jj] = MIN(degradation_ij[i][jj], 1.0);
+//						//if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
+//						//	partner[i][jj] = 0;
+//						//}
+//					}
+//				}
+//
+//				// Eulerian proximity function
+//				// sclale interaction to 0 if current distance exceeds original distance
+//			}
 
-				strain1d = (r - r0) / r0;
-				if (damage_onset_strain[i][jj] < 0.0) { // check if damage onset needs to be defined
-					if ((damage[i] == 1.0) && (damage[j] == 1.0)) {
-						if (strain1d > 0.0) {
-							damage_onset_strain[i][jj] = strain1d;
-						}
-					}
-				} else { // damage_onset strain is already defined
-					if (strain1d > damage_onset_strain[i][jj]) {
-						softening_strain = 1.0 * damage_onset_strain[i][jj];
-						degradation_ij[i][jj] = (strain1d - damage_onset_strain[i][jj]) / softening_strain;
+			if (failureModel[itype].integration_point_wise) {
+				if ((damage[i] > 0.99) || (damage[j] > 0.99)) {
+					if (r > r0 + h) {
+						softening_strain = 0.5 * h;
+						degradation_ij[i][jj] = (r - r0 - h) / softening_strain;
 						degradation_ij[i][jj] = MIN(degradation_ij[i][jj], 1.0);
-						//if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
-						//	partner[i][jj] = 0;
-						//}
+						//printf("degrading interaction to %f\n", degradation_ij[i][jj]);
+					} else {
+						degradation_ij[i][jj] = 0.0;
 					}
 				}
-
 			}
+
 		}
 	}
 
@@ -845,6 +864,9 @@ void PairTlsph::AssembleStress() {
 				 *  assemble total stress from pressure and deviatoric stress
 				 */
 				sigmaFinal = pFinal * eye + sigmaFinal_dev; // this is the stress that is kept
+
+				// bulk viscosity
+				//sigmaFinal += 0.06 * Lookup[REFERENCE_DENSITY][itype] * radius[i] * Lookup[SIGNAL_VELOCITY][itype] * d_iso * eye;
 
 				if (JAUMANN) {
 					/*
@@ -2132,12 +2154,13 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d stress, Matrix3d &stress_damaged) {
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
-	double *radius = atom->radius;
+	//double *radius = atom->radius;
 	double *damage = atom->damage;
 	int *type = atom->type;
 	int itype = type[i];
 	bool damage_flag = false;
-	double damage_gap, jc_failure_strain, damage_rate;
+	double jc_failure_strain;
+	//double damage_gap, damage_rate;
 	Matrix3d eye, stress_deviator;
 
 	eye.setIdentity();
@@ -2188,11 +2211,11 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 
 	damage[i] = MIN(damage[i], 1.0);
 
-//if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
-//	stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
-//} else { // tension: particle has reduced tensile and shear load bearing capability
-//	stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
-//}
+	if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
+		stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
+	} else { // tension: particle has reduced tensile and shear load bearing capability
+		stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
+	}
 
 }
 

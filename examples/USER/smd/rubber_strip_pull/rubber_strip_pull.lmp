@@ -8,7 +8,7 @@ variable 	h equal 2.01*${l0} # SPH smoothing kernel diameter
 variable 	vol_one equal ${l0}^2 # volume of one particle
 variable 	mass_one equal ${vol_one}*${rho} # mass of one particle
 variable 	skin equal 5*${l0} # Verlet list range
-variable 	vel equal 0.001 # pull velocity
+variable 	vel equal 0.04 # pull velocity
 units 		si # si means: a consistent system of units is used. Here: mm / GPa / ms
 dimension 2 	# this is a 2d plane-strain simulation
 boundary 	sm sm p # simulation box boundaries
@@ -51,16 +51,16 @@ variable        eosC5 equal 0.0
 variable        eosC6 equal 0.0
 
 # rh0 E nu Q1 Q2 hg Cp
-pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 00.0 10 875e3 &
+pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 0.0 10 875e3 &
 		*JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} 293.15 502 ${JC_M} &
 		*FAILURE_JOHNSON_COOK  -0.77 1.45  0.47 -0.5 1.0e-3 &
 		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
 		*END
 
-pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 00.0 10 875e3 &
-		*EOS_LINEAR &
-		*LINEAR_STRENGTH &
-		*END
+#pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 00.0 10 875e3 &
+#		*EOS_LINEAR &
+#		*LINEAR_STRENGTH &
+#		*END
 #JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} 293.15 502 ${JC_M} &
 #		*FAILURE_JOHNSON_COOK  -0.77 1.45  0.47 -0.5 1.0e-3 &
 #		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
@@ -77,7 +77,8 @@ compute 	nn all smd/tlsph_num_neighs # number of neighbors for each particle
 compute 	damage all smd/damage
 dump 		dump_id all custom 10 dump.LAMMPS id type x y z &
 			c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_S[7] c_nn c_p &
-			c_D[1] c_D[2] c_D[4] c_damage radius c_epsdot
+			c_D[1] c_D[2] c_D[4] c_damage radius c_epsdot &
+                        vx vy vz
 dump_modify 	dump_id first yes
 # apply velocity boundary condition to top and bottom rows of particles
 velocity top set 0.0 ${vel} 0.0 sum no units box
@@ -89,10 +90,13 @@ fix botfix bot setforce 0 0 0
 fix dtfix all smd/adjust_dt 0.1
 variable stress equal 0.5*(f_botfix[2]-f_topfix[2])/20
 variable strain equal (2.0*${vel}*f_dtfix/20) # strain: relative elongation
-fix integration_fix all smd/integrate_tlsph 
+fix integration_fix all smd/integrate_tlsph xsph
 fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain
 run 10000
 #velocity all set 0 0 0 units box
 #run 7000
+velocity top set 0.0 -${vel} 0.0 sum no units box
+velocity bot set 0.0 ${vel} 0.0 sum no units box
+run 15000
