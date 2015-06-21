@@ -74,6 +74,7 @@ public:
 			Matrix3d &sigma_dev_rate, double &plastic_strain_increment);
 	void ComputeDamage(const int i, const Matrix3d strain, const Matrix3d sigmaFinal, Matrix3d &sigma_damaged);
 
+
 protected:
 	void allocate();
 	char *suffix;

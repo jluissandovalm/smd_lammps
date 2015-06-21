@@ -48,7 +48,7 @@ static inline Matrix3d Deviator(const Matrix3d M) {
  * obtained again from an SVD. The rotation should proper now, i.e., det(R) = +1.
  */
 
-static inline bool PolDec(Matrix3d &M, Matrix3d &R, Matrix3d &T) {
+static inline bool PolDec(Matrix3d M, Matrix3d &R, Matrix3d &T, bool scaleF) {
 
 	JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV); // SVD(A) = U S V*
 	Vector3d S_eigenvalues = svd.singularValues();
@@ -61,51 +61,39 @@ static inline bool PolDec(Matrix3d &M, Matrix3d &R, Matrix3d &T) {
 	// now do polar decomposition into M = R * T, where R is rotation
 	// and T is translation matrix
 	R = U * V.transpose();
+	T = V * S * V.transpose();
 
 	if (R.determinant() < 0.0) { // this is an improper rotation
-		//printf("determinant of R=%f is not unity!\n", R->determinant());
-
 		// identify the smallest entry in S and flip its sign
 		int imin;
 		S_eigenvalues.minCoeff(&imin);
 		S(imin, imin) *= -1.0;
 
-		Matrix3d F = U * S * V.transpose(); // recompute flipped deformation gradient
-		svd.compute(F, ComputeFullU | ComputeFullV); // SVD(A) = U S V*
-		U = svd.matrixU();
-		V = svd.matrixV();
-		R = U * V.transpose(); // extract proper rotation
-				//printf("determinant of R after flipping is %f\", R->determinant());
+		R = M * V * S.inverse() * V.transpose(); // recompute R using flipped stretch eigenvalues
 	}
 
 	/*
 	 * scale S to avoid small principal strains
 	 */
 
-	double min = 0.3; // 0.3^2 = 0.09, should suffice for most problems
-	double max = 2.0;
-	for (int i = 0; i < 3; i++) {
-		if (S(i, i) < min) {
-			S(i, i) = min;
-		} else if (S(i, i) > max) {
-			S(i, i) = max;
+	if (scaleF) {
+		double min = 0.3; // 0.3^2 = 0.09, should suffice for most problems
+		double max = 2.0;
+		for (int i = 0; i < 3; i++) {
+			if (S(i, i) < min) {
+				S(i, i) = min;
+			} else if (S(i, i) > max) {
+				S(i, i) = max;
+			}
 		}
+		T = V * S * V.transpose();
 	}
 
-	T = V * S * V.transpose();
-	M = R * T;
-
-	if (fabs(R.determinant() - 1.0) < 1.0e-8) {
+	if (R.determinant() > 0.0) {
 		return true;
 	} else {
 		return false;
 	}
-
-//    cout << "Here is the difference between M and its reconstruction from the polar decomp:" << endl << Mdiff << endl;
-//    cout << "Here is the Rotation matrix:" << endl << *R << endl;
-//    cout << "Here is the Translation Matrix:" << endl << *T << endl;
-//    cout << "is U unitary? Her is U^T * U:" << endl << R->transpose()* *R << endl;
-//#endif
 }
 
 /*

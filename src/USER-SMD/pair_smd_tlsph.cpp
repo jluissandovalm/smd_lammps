@@ -165,7 +165,7 @@ void PairTlsph::PreCompute() {
 	Vector3d xi, xj, vi, vj, vinti, vintj, x0i, x0j, dvint, du;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 	bool Shape_Matrix_Inversion_Success, status;
-	SelfAdjointEigenSolver<Matrix2d> es;
+	SelfAdjointEigenSolver < Matrix2d > es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	eye.setIdentity();
@@ -279,59 +279,19 @@ void PairTlsph::PreCompute() {
 				Shape_Matrix_Inversion_Success = false;
 
 				if (domain->dimension == 2) {
-					K2d(0, 0) = K[i](0, 0);
-					K2d(0, 1) = K[i](0, 1);
-					K2d(1, 0) = K[i](1, 0);
-					K2d(1, 1) = K[i](1, 1);
+					K[i](2, 2) = 1.0;
+				}
 
-					if (fabs(K2d.determinant()) > 1.0e-4) {
-						//printf("attempting inverse of 2d K\n");
-						es.compute(K2d);
-						if ((fabs(es.eigenvalues()(0)) > 1.0e-4) && (fabs(es.eigenvalues()(1)) > 1.0e-4)) {
-							Shape_Matrix_Inversion_Success = true;
-						} else {
-							cout << endl << "These are the eigenvalues of K: " << endl << es.eigenvalues() << endl;
-						}
-					} else {
-						//printf("not attempting inverse of 2d K because determinant=%g is too small\n", K2d.determinant());
-					}
-
-					if (Shape_Matrix_Inversion_Success) {
-						K2di = K2d.inverse();
-						K[i].setZero();
-						K[i](0, 0) = K2di(0, 0);
-						K[i](0, 1) = K2di(0, 1);
-						K[i](1, 0) = K2di(1, 0);
-						K[i](1, 1) = K2di(1, 1);
-						K[i](2, 2) = 1.0;
-					} else {
-						//cout << endl << "we have a problem with K; this is K" << endl << K2d << endl;
-						//cout << "this is Ki" << endl << K2di << endl;
-						//printf("this is the determinant %g\n", K2d.determinant());
-						K[i].setIdentity();
-						//error->one(FLERR, "");
-					}
-				} else { // 3d
-
-					//printf("detK = %f\n", K[i].determinant());
-					// all K dets should be negative
-					if (K[i].determinant() < -1.0e-2) {
-						Shape_Matrix_Inversion_Success = true;
-					} else {
-						//printf("not attempting inverse of 3d K because determinant=%g is too small\n", K[i].determinant());
-					}
-
-					if (Shape_Matrix_Inversion_Success) {
-						K[i] = K[i].inverse().eval();
-					} else {
-						cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
-						cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
-						printf("this is the determinant of K %g\n", K[i].determinant());
-						K[i].setIdentity();
-						//error->one(FLERR, "");
-						mol[i] = -1;
-					}
-				} // end if 3d
+				if (fabs(K[i].determinant()) > 1.0e-5) {
+					K[i] = K[i].inverse().eval();
+				} else {
+					cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
+					cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
+					printf("this is the determinant of K %g\n", K[i].determinant());
+					K[i].setIdentity();
+					//error->one(FLERR, "");
+					mol[i] = -1;
+				}
 
 				Fdot[i] *= K[i];
 				Fincr[i] *= K[i];
@@ -342,13 +302,13 @@ void PairTlsph::PreCompute() {
 						R[i].setIdentity(); // for Jaumann stress rate, we do not need a subsequent rotation back into the reference configuration
 					} else {
 
-						// convention: unrotated frame is that one, where the true rotation of an integration point has been subtracted.
-						// stress in the unrotated frame of reference is denoted sigma (stress seen by an observer doing rigid body rotations along with the material)
-						// stress in the true frame of reference (a stationary observer) is denoted by T, "true stress"
+						status = PolDec(Fincr[i], R[i], U, false); // polar decomposition of the deformation gradient, F = R * U
 
-						status = PolDec(Fincr[i], R[i], U); // polar decomposition of the deformation gradient, F = R * U
 						if (!status) {
-							error->one(FLERR, "Polar decomposition of deformation gradient failed.\n");
+							error->message(FLERR, "Polar decomposition of deformation gradient failed.\n");
+							mol[i] = -1;
+						} else {
+							Fincr[i] = R[i] * U;
 						}
 					}
 
@@ -363,6 +323,9 @@ void PairTlsph::PreCompute() {
 					W[i] = 0.5 * (L - L.transpose()); // spin tensor:: need this for Jaumann rate
 
 					// unrotated rate-of-deformation tensor d, see right side of Pronto2d, eqn.(2.1.7)
+					// convention: unrotated frame is that one, where the true rotation of an integration point has been subtracted.
+					// stress in the unrotated frame of reference is denoted sigma (stress seen by an observer doing rigid body rotations along with the material)
+					// stress in the true frame of reference (a stationary observer) is denoted by T, "true stress"
 					d[i] = R[i].transpose() * D[i] * R[i];
 
 					// limit strain rate
@@ -390,6 +353,9 @@ void PairTlsph::PreCompute() {
 						cout << "Here is matrix K-1:" << endl << K[i] << endl;
 						cout << "Here is matrix K:" << endl << K[i].inverse() << endl;
 						cout << "Here is det of K" << endl << (K[i].inverse()).determinant() << endl;
+						cout << "Here is matrix R:" << endl << R[i] << endl;
+						cout << "Here is det of R" << endl << R[i].determinant() << endl;
+						cout << "Here is matrix U:" << endl << U << endl;
 						mol[i] = -1;
 						//error->one(FLERR, "");
 					}
@@ -750,7 +716,8 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 //				// sclale interaction to 0 if current distance exceeds original distance
 //			}
 
-			if (failureModel[itype].integration_point_wise) {
+			//if (failureModel[itype].integration_point_wise) {
+			if (false) {
 				if ((damage[i] > 0.99) || (damage[j] > 0.99)) {
 					if (r > r0 + h) {
 						softening_strain = 0.5 * h;
@@ -2154,7 +2121,7 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d stress, Matrix3d &stress_damaged) {
 	double *eff_plastic_strain = atom->eff_plastic_strain;
 	double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
-	//double *radius = atom->radius;
+	double *radius = atom->radius;
 	double *damage = atom->damage;
 	int *type = atom->type;
 	int itype = type[i];
@@ -2199,8 +2166,8 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 
 		if (eff_plastic_strain[i] >= jc_failure_strain) {
 			damage_flag = true;
-			//damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (10.0 * radius[i]);
-			//damage[i] += damage_rate * update->dt;
+			double damage_rate = Lookup[SIGNAL_VELOCITY][itype] / (100.0 * radius[i]);
+			damage[i] += damage_rate * update->dt;
 			damage[i] = 1.0;
 		}
 	}
