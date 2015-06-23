@@ -1,0 +1,104 @@
+variable        h equal 0.5 # set a length scale ... needed for neighborlist build
+# define material parameters for plate
+variable        E equal 1.0 # Young's modulus
+variable        rho equal 2700.0e-9 # Aluminium mass density
+variable        sigy equal 0.03 # plastic yield stress
+variable        contact_stiffness equal 0.5*${E}
+#
+units		si
+dimension       3
+boundary        f f f
+atom_style      smd
+comm_style      tiled
+neighbor        ${h} bin
+neigh_modify    every 10 delay 0 check yes binsize 1.0 exclude type 2 2
+comm_modify     vel yes
+newton          off
+atom_modify     map array sort 1000 2
+
+# read non-uniform plate geometry obtained from FEM -mesh
+read_data       scratch_adjusted.data
+group           plate type 3
+run             0
+
+# create a group to hold the bottom layer of plate particles
+region          bot block EDGE EDGE EDGE EDGE EDGE 0.51 units box
+group           bot region bot
+
+# create an indentor
+fix             stl_surface_fix all smd/wall_surface scratcher.stl 2 65535
+run             0
+group           indentor type 2
+group           tlsph type 3
+
+
+
+
+# pair style: Total-Lagrangian SPH plus contact forces between plate and indentor
+pair_style      hybrid/overlay tlsph *UPDATE_CONSTANT 0.3 smd/tri_surface 1.0
+pair_coeff      * * none
+#                                  rh0    E    nu   Q1   Q2  hg Cp
+pair_coeff      3 3 tlsph *COMMON  ${rho} ${E} 0.3  0.1  0.0 10 910 &
+			  *EOS_LINEAR &
+			  *LINEAR_PLASTICITY ${sigy} 0 &
+                          *END 
+pair_coeff      2 3 smd/tri_surface ${contact_stiffness}
+
+# computes
+compute         E plate smd/tlsph_strain
+compute         P plate smd/plastic_strain
+compute         S plate smd/tlsph_stress
+compute         d plate smd/damage
+compute         nn plate smd/tlsph_num_neighs
+compute         contact_radius all smd/contact_radius
+compute         eint all smd/internal_energy
+compute         alleint all reduce sum c_eint
+variable        etot equal ke+c_alleint+pe
+compute         indent_x indentor reduce sum fx
+compute         indent_y indentor reduce sum fy
+compute         indent_z indentor reduce sum fz
+compute         tool_coord indentor smd/triangle_vertices
+
+
+
+
+# fixes for time integration etc.
+fix             bottom_fix bot setforce 0 0 0 # hold bottome of plate stationary
+fix             dtfix all smd/adjust_dt 0.1
+fix             integration_fix tlsph smd/integrate_tlsph xsph
+
+
+# dump
+variable        dumpFreq equal 50
+dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
+                c_E[1] c_E[2] c_E[3] c_E[4] c_E[5] c_E[6] &
+                c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_S[7] &
+                fx fy fz vx vy vz c_P c_eint proc &
+                c_contact_radius c_nn mol c_d mass radius
+dump_modify     dump_id first yes
+
+dump            tool_dump   indentor  custom 50 tool.LAMMPS      id type mol &
+                  x               y               z                        &
+                  c_tool_coord[1] c_tool_coord[2] c_tool_coord[3]          &
+                  c_tool_coord[4] c_tool_coord[5] c_tool_coord[6]          &
+                  c_tool_coord[7] c_tool_coord[8] c_tool_coord[9]        
+dump_modify     tool_dump first yes
+#
+thermo          10
+thermo_style    custom step ke pe v_etot c_alleint f_dtfix dt
+#
+# output force on indentor
+variable        f_indentout_x equal   c_indent_x
+variable        f_indentout_y equal   c_indent_y
+variable        f_indentout_z equal   c_indent_z
+variable        tot_time equal f_dtfix
+fix             output_fix all print 10 "${tot_time} ${f_indentout_x} ${f_indentout_y} ${f_indentout_z}" file time_force.dat screen no
+
+
+balance         1.0 rcb
+
+# prescribe indentor velocity and run
+fix             indentor_fix indentor smd/move_tri_surf *LINEAR 0 0 -100
+run             1000
+fix             indentor_fix indentor smd/move_tri_surf *LINEAR 100 0 0
+run             20000

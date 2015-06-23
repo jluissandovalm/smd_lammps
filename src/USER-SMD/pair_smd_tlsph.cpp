@@ -329,8 +329,8 @@ void PairTlsph::PreCompute() {
 					d[i] = R[i].transpose() * D[i] * R[i];
 
 					// limit strain rate
-					double limit = 1.0e-3 * Lookup[SIGNAL_VELOCITY][itype] / radius[i];
-					d[i] = LimitEigenvalues(d[i], limit);
+//					double limit = 1.0e-3 * Lookup[SIGNAL_VELOCITY][itype] / radius[i];
+//					d[i] = LimitEigenvalues(d[i], limit);
 
 					// normalize average velocity field around an integration point
 					if (shepardWeight[i] > 0.0) {

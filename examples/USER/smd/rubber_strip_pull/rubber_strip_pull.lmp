@@ -33,7 +33,7 @@ region 		top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
 region 		bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
 group top region top # top row of particles
 group bot region bot # bottom row of particles
-pair_style hybrid/overlay tlsph smd/hertz 1.0 # activate Total-Lagrangian SPH
+pair_style hybrid/overlay tlsph *UPDATE_PAIRWISE 0.1 smd/hertz 1.0 # activate Total-Lagrangian SPH
 #pair_style tlsph
 
 variable        JC_A equal 0.3241
@@ -76,12 +76,14 @@ compute 	p all smd/plastic_strain
 compute 	epsdot all smd/plastic_strain_rate
 compute 	S all smd/tlsph_stress # Cauchy stress tensor
 compute 	D all smd/tlsph_strain_rate
+compute         F all smd/tlsph_defgrad
 compute 	nn all smd/tlsph_num_neighs # number of neighbors for each particle
 compute 	damage all smd/damage
 dump 		dump_id all custom 10 dump.LAMMPS id type x y z &
 			c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_S[7] c_nn c_p &
 			c_D[1] c_D[2] c_D[4] c_damage radius c_epsdot &
-                        vx vy vz
+                        vx vy vz &
+                        c_F[1] c_F[2] c_F[3] c_F[4] c_F[5] c_F[6] c_F[7]  c_F[8] c_F[9] c_F[10]
 dump_modify 	dump_id first yes
 # apply velocity boundary condition to top and bottom rows of particles
 velocity top set 0.0 ${vel} 0.0 sum no units box
@@ -97,9 +99,9 @@ fix integration_fix all smd/integrate_tlsph xsph
 fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain
-run 1
+run 10000
 #velocity all set 0 0 0 units box
 #run 7000
 velocity top set 0.0 -${vel} 0.0 sum no units box
 velocity bot set 0.0 ${vel} 0.0 sum no units box
-run 25000
+#run 25000
