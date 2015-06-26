@@ -279,6 +279,7 @@ void PairULSPH::PreCompute() {
 	Matrix3d Ktmp, Ltmp, Ftmp, K3di, D;
 	Vector3d xi, xj, vi, vj, x0i, x0j, dx0;
 	Matrix2d K2di, K2d;
+//	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 
 	// zero accumulators
 	for (i = 0; i < nlocal; i++) {
@@ -328,6 +329,9 @@ void PairULSPH::PreCompute() {
 			}
 
 			dx = xj - xi;
+//			if (periodic)
+//				domain->minimum_image(dx(0), dx(1), dx(2)); // we need this periodic check because j can be non-ghosted
+
 			rSq = dx.squaredNorm();
 			h = irad + radius[j];
 			if (rSq < h * h) {
@@ -424,18 +428,13 @@ void PairULSPH::PreCompute() {
 					}
 
 				} else { // 3d
-					if (fabs(K[i].determinant()) > 1.0e-16) {
-						// check if inverse of K is reasonable
-						es3d.compute(K[i]);
-						if ((fabs(es3d.eigenvalues()(0)) > 1.0e-3) && (fabs(es3d.eigenvalues()(1)) > 1.0e-3)
-								&& (fabs(es3d.eigenvalues()(2)) > 1.0e-3)) {
+					if (fabs(K[i].determinant()) > 1.0e-8) {
 							Shape_Matrix_Inversion_Success = true;
-						} else {
-							cout << endl << "we have a problem with K due to small eigenvalues; this is K" << endl << K[i] << endl;
-							cout << "these are the eigenvalues of K " << es3d.eigenvalues() << endl;
-						}
 					} else {
-						cout << endl << "we have a problem with K due to a small determinant; this is K" << endl << K[i] << endl;
+						//cout << endl << "we have a problem with K due to a small determinant; this is K" << endl << K[i] << endl;
+						reconstruct_rank_deficient_shape_matrix(K[i]);
+						//K[i](0,0) = 1.0;
+						Shape_Matrix_Inversion_Success = true;
 					}
 
 					if (Shape_Matrix_Inversion_Success) {
@@ -494,6 +493,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
 	Vector3d gamma, f_hg, dx0, du_est, du;
 	double r_ref, weight, p;
+	//int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 
 	// double ini_dist, weight;
 	// double *contact_radius = atom->contact_radius;
@@ -627,6 +627,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 			xj(2) = x[j][2];
 
 			dx = xj - xi;
+//			if (periodic)
+//				domain->minimum_image(dx(0), dx(1), dx(2)); // we need this periodic check because j can be non-ghosted
 			rSq = dx.squaredNorm();
 			h = radius[i] + radius[j];
 			if (rSq < h * h) {
@@ -1691,7 +1693,8 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d d
 	double deltaStressDevSum, shearRateSq, strain_increment;
 
 	if (domain->dimension == 3) {
-		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1) + deltaStressDev(0, 2) * deltaStressDev(0, 2) + deltaStressDev(1, 2) * deltaStressDev(1, 2);
+		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1) + deltaStressDev(0, 2) * deltaStressDev(0, 2)
+				+ deltaStressDev(1, 2) * deltaStressDev(1, 2);
 		shearRateSq = d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2);
 	} else {
 		deltaStressDevSum = deltaStressDev(0, 1) * deltaStressDev(0, 1);

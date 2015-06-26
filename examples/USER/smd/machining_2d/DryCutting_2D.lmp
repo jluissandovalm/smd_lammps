@@ -1,0 +1,181 @@
+# # # # # # # # # # # # #   E X A M P L E:   D R Y   C U T T I N G   2 D   # # # # # # # # # # # # #
+
+# SPECIFY PROCESSORS
+#  processors 2 2 1
+
+# DEFINE GENERAL CONSTANTS
+  variable  rho               equal  2.7e-6            # mass density
+  variable  E                 equal 73.000
+  variable  nu                equal  0.330            # poisson ratio
+  variable  sigy              equal  0.396            # plastic yield strength
+  variable        G          equal  ${E}/(2*(1+nu))       # Shear Modulus (calculated inside JK)
+  variable        mt         equal 793.1500               # melt temperature
+  variable        rt         equal 298.1500               # room temperature
+
+  variable        JC_A       equal   0.3520
+  variable        JC_B       equal   0.4400
+  variable        JC_N       equal   0.4200
+  variable        JC_C       equal   0.0000
+  variable        JC_M       equal   0.0000
+  variable        JC_epsdot0 equal   1.0000e-3            # 1/s = 1/(1000 ms)
+
+  variable        JC_D1      equal   0.1300
+  variable        JC_D2      equal   0.1300
+  variable        JC_D3      equal  -1.5000
+  variable        JC_D4      equal   0.0110
+
+  variable        eosC0      equal   0.0000
+  variable        eosC1      equal  74.2000
+  variable        eosC2      equal  60.5000
+  variable        eosC3      equal  36.5000
+  variable        eosC4      equal   0.0000
+  variable        eosC5      equal   0.0000
+  variable        eosC6      equal   0.0000
+ 
+  variable  l0                equal  0.125
+  variable  h                 equal  3.000*${l0}      # SPH kernel diameter, from mesh.data file
+  variable  contact_stiffness equal  0.880*${E}       # contact force amplitude
+  variable  skin              equal  1.000*${h}       # Verlet list range
+  variable  cr                equal  0.500*${l0}      # contact radius (only used for visualization)
+  variable  vol_1             equal  ${l0}*${l0}*1    # plane strain
+
+  variable  velx              equal -10.100            # velocity X-dir
+  variable  vely              equal  0.000            # velocity Y-dir
+  variable  velz              equal  0.000            # velocity Z-dir
+
+# SPECIFY LAMMPS SETUPS
+  units           si     # consisten unit system
+  dimension       2      # dimensions
+  boundary        f  f  p  # range x,y,z
+  atom_style      smd
+  comm_style      brick 
+  neighbor        ${skin} bin
+  neigh_modify    every 5 delay 0 check yes exclude type 2 2 one 10000 page 100000
+  comm_modify     vel yes
+  newton          off
+  atom_modify     map hash sort 1000 5.0
+
+####################################################################################################
+# ------------------------------------- P R E  P R O C E S S ------------------------------------- #
+####################################################################################################
+
+# CREATE SIMULATION BOX
+  region          box block -8.0 3.0   -1.0 3.0   -0.2 0.2 units box   # create a region named 'box'
+  create_box      2 box                                 # create box with 2 paricle types from 'box'
+
+# CREATE A LATTICE OF PARTICLES
+  region          particles block   -2.81 -0.01   -0.7 0.5   0.00 0.022   units box  # create container
+  lattice         sq ${l0}                                                    # define cubic lattice
+  create_atoms    1 region particles # fill region named "particles" with particles on cubic lattice
+  group           tlsph type 1                                  # this group holds all SPH particles
+
+# CREATE GROUP OF PARTICLES TO APPLY 1st BOUNDARY CONDITION (BC)
+  region          reg1   block   EDGE  EDGE   EDGE -0.3   EDGE EDGE   units box
+  group           group1 region reg1 
+  region          reg2   block   EDGE -5.78   EDGE EDGE   EDGE EDGE   units box
+  group           group2 region reg2 
+  region          reg3   block   EDGE  EDGE   EDGE EDGE   EDGE EDGE   units box
+  group           group3 region reg3 
+  group           g_cnts union group1 group2
+
+# LOAD A RIGID-BODY GEOMETRY (MACHINING TOOL)                    <type>             <mol>    < id>
+  fix             stl_surface_fix1 all smd/wall_surface tool_fillet_2Dmesh_edge.stl     2    65535
+  run             1
+  group           tool type 2
+
+# INITIALIZE PARTICLE MASS
+  set             group tlsph volume ${vol_1}
+  set             group all   smd_mass_density ${rho} # mass = rho * volume
+  set             group tlsph smd_contact_radius ${cr} #
+  set             group tlsph diameter ${h} # set SPH kernel diameter
+
+# SPECIFY A PAIR-STYLE 
+  pair_style      hybrid/overlay tlsph smd/tri_surface 1.0
+
+# SPECIFY PAIR INTERACTIONS
+# - Interaction between particles type 1 (block)
+#   - Define a Material model ------ <rh0>  <E>  <nu> <Q1> <Q2> <HG> <Cp>
+  pair_coeff      1 1 tlsph *COMMON    ${rho} ${E} ${nu} 0.10 00.0 10  875e3                                &
+                           *JOHNSON_COOK ${JC_A} ${JC_B} ${JC_N} ${JC_C} ${JC_epsdot0} ${rt} ${mt} ${JC_M} &
+                          *FAILURE_JOHNSON_COOK ${JC_D1} ${JC_D2} ${JC_D3} ${JC_D4} ${JC_epsdot0}         &
+                          *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6}  &
+                        *END
+
+#pair_coeff      1 1 tlsph *COMMON    ${rho} ${E} ${nu} 1.00 00.0 10  875e3 &
+#                          *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
+#                          *LINEAR_PLASTICITY 0.7 0 &
+#                          *FAILURE_MAX_PLASTIC_STRAIN 0.3 &
+#                          *END
+
+
+                         #*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6}  &
+
+# - Interaction between particles type 2 (tool)
+  pair_coeff      2 2 none
+# - Interaction between particles type 1 and 2 (block-tool contact)
+  pair_coeff      1 2 smd/tri_surface ${contact_stiffness}
+# -----------------------------------------------------------------------------
+
+# APPLY DIRICHLET BOUDARY CONDITIONS
+  fix             constrs   g_cnts setforce    0    0    0   # Fix the Block's bottom edge
+#  fix             zConst    group3 setforce NULL NULL    0   # Fix all particles in Z-Direction
+  fix             tool_fix tool smd/move_tri_surf *LINEAR ${velx} ${vely} ${velz} # Move the tool (cut)
+
+####################################################################################################
+# ------------------------------------ P O S T  P R O C E S S ------------------------------------ #
+####################################################################################################
+
+# SPECIFY PER-PARTICLE DATA TO BE COMPUTED
+  compute         contact_radius  all    smd/contact_radius
+  compute         E               tlsph  smd/tlsph_strain
+  compute         S               tlsph  smd/tlsph_stress
+  compute         ps              tlsph  smd/plastic_strain
+  compute         damage          tlsph  smd/damage
+  compute         nn              tlsph  smd/tlsph_num_neighs
+  compute         tool_coord      tool   smd/triangle_vertices
+  compute         F               tlsph  smd/tlsph_defgrad
+  compute         rho             all    smd/rho
+
+# DEFINE 'dump' FILE(S)
+# --------------------------------------------------------------------------
+  dump            wpiece_dump all custom 100 wpiece.LAMMPS  id type mol   & 
+                  x y z  vx vy vz  c_nn   radius   c_contact_radius      &
+                  c_S[7]   c_ps   c_damage   proc c_F[10] c_rho
+  dump_modify     wpiece_dump first yes
+# --------------------------------------------------------------------------
+# dump            tool_dump   tool  custom 25   tool.LAMMPS   id type mol  &
+#                 x               y               z                        &
+#                 c_tool_coord[1] c_tool_coord[2] c_tool_coord[3]          &
+#                 c_tool_coord[4] c_tool_coord[5] c_tool_coord[6]          &
+#                 c_tool_coord[7] c_tool_coord[8] c_tool_coord[9]        
+# dump_modify     tool_dump  first yes
+# --------------------------------------------------------------------------
+
+####################################################################################################
+# ---------------------------------- R U N  S I M U L A T I O N ---------------------------------- #
+####################################################################################################
+
+# PERFORM BALANCE OF PROCESSING LOAD
+  balance         1.0 shift x 10 1.05
+  #balance         1.0 rcb
+  run 1
+
+  timestep       0.003
+  run            1
+
+
+
+  fix             balance_fix all balance 100 1.05 shift xy 10 1.0 # load balancing for MPI every N time steps
+
+# DEFINE TIME INTEGRATION 
+  fix             dtfix tlsph smd/adjust_dt 0.1             # Estimate a stable dt
+  fix             integration_fix tlsph smd/integrate_tlsph xsph # tlsph solver
+  fix             2dfix tlsph enforce2d
+
+# PRINT PARAMETERS IN SHELL
+  thermo          100
+  thermo_style    custom step time dt ke pe f_constrs[1]
+  thermo_modify   lost warn
+
+# START SIMULATION
+  run             300000

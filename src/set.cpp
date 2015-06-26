@@ -591,6 +591,7 @@ void Set::set(int keyword)
     else if (keyword == MESO_RHO) atom->rho[i] = dvalue;
     else if (keyword == SMD_MASS_DENSITY) { // set mass from volume and supplied mass density
     	atom->rmass[i] = atom->vfrac[i] * dvalue;
+    	atom->rho[i] = dvalue;
     }
     else if (keyword == SMD_CONTACT_RADIUS) atom->contact_radius[i] = dvalue;
 

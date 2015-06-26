@@ -112,7 +112,7 @@ static inline Matrix3d pseudo_inverse_SVD(Matrix3d M) {
 //cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
 //cout << "Its singular values are:" << endl << singularValues << endl;
 
-	double pinvtoler = 1.0e-6;
+	double pinvtoler = 1.0e-16;
 	for (long row = 0; row < 3; row++) {
 		if (singularValues(row) > pinvtoler) {
 			singularValuesInv(row) = 1.0 / singularValues(row);
@@ -122,7 +122,8 @@ static inline Matrix3d pseudo_inverse_SVD(Matrix3d M) {
 	}
 
 	Matrix3d pInv;
-	pInv = V * singularValuesInv.asDiagonal() * U.transpose();
+	//pInv = V * singularValuesInv.asDiagonal() * U.transpose();
+	pInv = U * singularValuesInv.asDiagonal() * V.transpose();
 
 	return pInv;
 }
@@ -208,6 +209,36 @@ static inline bool LimitMinMaxEigenvalues(Matrix3d &S, double min, double max) {
 	}
 }
 
+static inline void reconstruct_rank_deficient_shape_matrix(Matrix3d &K) {
+
+		JacobiSVD < Matrix3d > svd(K, ComputeFullU | ComputeFullV);
+		Vector3d singularValues = svd.singularValues();
+
+		for (int i = 0; i < 3; i++) {
+			if (singularValues(i) < 1.0e-8) {
+				singularValues(i) = 1.0;
+			}
+		}
+
+//		int imin;
+//		double minev = singularValues.minCoeff(&imin);
+//
+//		printf("min eigenvalue=%f has index %d\n", minev, imin);
+//		Vector3d singularVec = U.col(0).cross(U.col(1));
+//		cout << "the eigenvalues are " << endl << singularValues << endl;
+//		cout << "the singular vector is " << endl << singularVec << endl;
+//
+//		// reconstruct original K
+//
+//		singularValues(2) = 1.0;
+
+		K = svd.matrixU() * singularValues.asDiagonal() * svd.matrixV().transpose();
+		//cout << "the reconstructed K is " << endl << K << endl;
+		//exit(1);
+}
+
 }
 
 #endif /* SMD_MATH_H_ */
+
+
