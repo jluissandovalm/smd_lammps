@@ -98,6 +98,7 @@ protected:
 	double *detF, *shepardWeight, *particle_dt;
 	double *hourglass_error;
 	int *numNeighsRefConfig;
+	double *rho_average; // average mass density used for smoothing the mass density
 
 	int nmax; // max number of atoms on this proc
 	double hMin; // minimum kernel radius for two particles

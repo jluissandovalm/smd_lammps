@@ -390,6 +390,34 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		}
 	}
 
+	// compute Shepard kernels
+//	double *vfrac = atom->vfrac;
+//	for (i = 0; i < nlocal; i++) {
+//
+//		double wshep = 0.0;
+//
+//		double self_wf, self_wfd;
+//		h = 2.0 * radius[i];
+//		r = 0.0;
+//		spiky_kernel_and_derivative(h, r, domain->dimension, self_wf, self_wfd);
+//
+//		wshep = vfrac[i] * wf;
+//
+//		for (jj = 0; jj < npartner[i]; jj++) {
+//			wf = wf_list[i][jj];
+//			wshep += vfrac[j] * wf;
+//		}
+//
+//		for (jj = 0; jj < npartner[i]; jj++) {
+//			wf = wf_list[i][jj];
+//			wfd = wfd_list[i][jj];
+//
+//			double wfd_shep = (wfd / wshep) - (wfd * wf * vfrac[j] / (wshep * wshep));
+//			wfd_list[i][jj] = wfd_shep;
+//			wf_list[i][jj] = wf / wshep;
+//		}
+//	}
+
 	// bond statistics
 	if (update->ntimestep > -1) {
 		n = 0;

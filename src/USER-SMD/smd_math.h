@@ -112,18 +112,19 @@ static inline Matrix3d pseudo_inverse_SVD(Matrix3d M) {
 //cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
 //cout << "Its singular values are:" << endl << singularValues << endl;
 
-	double pinvtoler = 1.0e-16;
+	double pinvtoler = 1.0e-8;
 	for (long row = 0; row < 3; row++) {
 		if (singularValues(row) > pinvtoler) {
 			singularValuesInv(row) = 1.0 / singularValues(row);
 		} else {
-			singularValuesInv(row) = 1.0;
+			singularValuesInv(row) = 0.0;
 		}
 	}
 
+	//singularValuesInv *= -1.0; // scale with -1 because spiky gradient function is negative throughout its range
+
 	Matrix3d pInv;
-	//pInv = V * singularValuesInv.asDiagonal() * U.transpose();
-	pInv = U * singularValuesInv.asDiagonal() * V.transpose();
+	pInv = V.transpose() * singularValuesInv.asDiagonal() * U;
 
 	return pInv;
 }

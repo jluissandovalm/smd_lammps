@@ -129,6 +129,7 @@ private:
 
 	bool density_summation, density_continuity, velocity_gradient, gradient_correction_flag;
 	double *effm;
+	double *d_iso_difference;
 
 };
 

@@ -57,8 +57,9 @@ using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
 
+#define TIME_INTEGRATE_DEFGRAD true
 #define JAUMANN false
-#define DETF_MIN 0.001 // maximum compression deformation allowed
+#define DETF_MIN 0.01 // maximum compression deformation allowed
 #define DETF_MAX 40.0 // maximum tension deformation allowed
 #define TLSPH_DEBUG 0
 #define PLASTIC_STRAIN_AVERAGE_WINDOW 100.0
@@ -84,6 +85,7 @@ PairTlsph::PairTlsph(LAMMPS *lmp) :
 	hourglass_error = NULL;
 	Lookup = NULL;
 	particle_dt = NULL;
+	rho_average = NULL;
 
 	updateFlag = 0;
 	first = true;
@@ -128,6 +130,7 @@ PairTlsph::~PairTlsph() {
 		delete[] CauchyStress;
 		delete[] hourglass_error;
 		delete[] particle_dt;
+		delete[] rho_average;
 
 		delete[] failureModel;
 	}
@@ -148,6 +151,7 @@ void PairTlsph::PreCompute() {
 	double **v = atom->vest; // extrapolated velocities corresponding to current positions
 	double **vint = atom->v; // Velocity-Verlet algorithm velocities
 	double *damage = atom->damage;
+	double **defgrad0 = atom->smd_data_9;
 	int *tag = atom->tag;
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
@@ -165,8 +169,7 @@ void PairTlsph::PreCompute() {
 	Vector3d xi, xj, vi, vj, vinti, vintj, x0i, x0j, dvint, du;
 	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 	bool Shape_Matrix_Inversion_Success, status;
-	SelfAdjointEigenSolver < Matrix2d > es;
-	SelfAdjointEigenSolver<Matrix3d> es3d;
+	Matrix3d F0;
 
 	eye.setIdentity();
 
@@ -247,9 +250,9 @@ void PairTlsph::PreCompute() {
 			g = (wfd / r0) * dx0;
 
 			/* build matrices */
-			Ktmp = g * dx0.transpose();
-			Ftmp = (dx - dx0) * g.transpose();
-			Fdottmp = dv * g.transpose();
+			Ktmp = -g * dx0.transpose();
+			Ftmp = -(dx - dx0) * g.transpose();
+			Fdottmp = -dv * g.transpose();
 
 			K[i] += volj * Ktmp;
 			Fincr[i] += volj * Ftmp;
@@ -269,33 +272,65 @@ void PairTlsph::PreCompute() {
 		itype = type[i];
 		if (setflag[itype][itype] == 1) { // we only do the subsequent calculation if pair style is defined for this particle
 
-			if ((numNeighsRefConfig[i] < domain->dimension) && (mol[i] > 0)) { // cannot possibly invert shape matrix
-				printf("deleting particle [%d] because number of neighbors=%d is too small\n", tag[i], numNeighsRefConfig[i]);
-				mol[i] = -1;
-			}
+//			if ((numNeighsRefConfig[i] < domain->dimension) && (mol[i] > 0)) { // cannot possibly invert shape matrix
+//				printf("deleting particle [%d] because number of neighbors=%d is too small\n", tag[i], numNeighsRefConfig[i]);
+//				mol[i] = -1;
+//			}
 
 			if (mol[i] > 0) {
 
 				Shape_Matrix_Inversion_Success = false;
 
-				if (domain->dimension == 2) {
-					K[i](2, 2) = 1.0;
-				}
+				//if (domain->dimension == 2) {
+				//	K[i](2, 2) = -1.0;
+				//}
 
-				if (fabs(K[i].determinant()) > 1.0e-5) {
-					K[i] = K[i].inverse().eval();
-				} else {
-					cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
-					cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
-					printf("this is the determinant of K %g\n", K[i].determinant());
-					K[i].setIdentity();
-					//error->one(FLERR, "");
-					mol[i] = -1;
-				}
+				K[i] = pseudo_inverse_SVD(K[i]);
+
+//				if (fabs(K[i].determinant()) > 1.0e-5) {
+//					K[i] = K[i].inverse().eval();
+//				} else {
+//					cout << endl << "we have a problem with K; this is K" << endl << K[i] << endl;
+//					cout << "this would be the inverse of K" << endl << K[i].inverse() << endl;
+//					printf("this is the determinant of K %g\n", K[i].determinant());
+//					K[i].setIdentity();
+//					K[i] *= -1.0;
+//					//error->one(FLERR, "");
+//					//mol[i] = -1;
+//				}
+
+				//K[i].setIdentity();
+				//cout << endl << endl << endl << "this is F before correction" << endl << Fincr[i] << endl;
+
+				//cout << endl << "this is K" << endl << K[i] << endl;
 
 				Fdot[i] *= K[i];
-				Fincr[i] *= K[i];
-				Fincr[i] += eye; // we add the identity matrix because F = dx/dX = du/dX + I
+
+				if (TIME_INTEGRATE_DEFGRAD) { // compute deformation gradient from time derivative of deformatin gradient
+					F0(0, 0) = defgrad0[i][0];
+					F0(0, 1) = defgrad0[i][1];
+					F0(0, 2) = defgrad0[i][2];
+					F0(1, 0) = defgrad0[i][3];
+					F0(1, 1) = defgrad0[i][4];
+					F0(1, 2) = defgrad0[i][5];
+					F0(2, 0) = defgrad0[i][6];
+					F0(2, 1) = defgrad0[i][7];
+					F0(2, 2) = defgrad0[i][8];
+					F0 += update->dt * Fdot[i];
+					defgrad0[i][0] = F0(0, 0);
+					defgrad0[i][1] = F0(0, 1);
+					defgrad0[i][2] = F0(0, 2);
+					defgrad0[i][3] = F0(1, 0);
+					defgrad0[i][4] = F0(1, 1);
+					defgrad0[i][5] = F0(1, 2);
+					defgrad0[i][6] = F0(2, 0);
+					defgrad0[i][7] = F0(2, 1);
+					defgrad0[i][8] = F0(2, 2);
+					Fincr[i] = F0;
+				} else { // use deformation gradient computed from displacements
+					Fincr[i] *= K[i];
+					Fincr[i] += eye; // we add the identity matrix because F = dx/dX = du/dX + I
+				}
 
 				if (mol[i] > 0) {
 					if (JAUMANN) {
@@ -329,8 +364,8 @@ void PairTlsph::PreCompute() {
 					d[i] = R[i].transpose() * D[i] * R[i];
 
 					// limit strain rate
-					double limit = 1.0e-3 * Lookup[SIGNAL_VELOCITY][itype] / radius[i];
-					d[i] = LimitEigenvalues(d[i], limit);
+					//double limit = 1.0e-3 * Lookup[SIGNAL_VELOCITY][itype] / radius[i];
+					//d[i] = LimitEigenvalues(d[i], limit);
 
 					// normalize average velocity field around an integration point
 					if (shepardWeight[i] > 0.0) {
@@ -343,7 +378,7 @@ void PairTlsph::PreCompute() {
 					 * make sure F stays within some limits
 					 */
 
-					if ((detF[i] < DETF_MIN) || (detF[i] > DETF_MAX)) {
+					if ((detF[i] < DETF_MIN) || (detF[i] > DETF_MAX) || (numNeighsRefConfig[i] == 0)) {
 						printf("deleting particle [%d] because det(F)=%f is outside stable range %f -- %f \n", tag[i],
 								Fincr[i].determinant(),
 								DETF_MIN, DETF_MAX);
@@ -419,6 +454,8 @@ void PairTlsph::compute(int eflag, int vflag) {
 		hourglass_error = new double[nmax];
 		delete[] particle_dt;
 		particle_dt = new double[nmax];
+		delete[] rho_average;
+		rho_average = new double[nmax];
 	}
 
 	if (first) { // return on first call, because reference connectivity lists still needs to be built. Also zero quantities which are otherwise undefined.
@@ -461,8 +498,10 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	double *de = atom->de;
 	double *rmass = atom->rmass;
 	double *radius = atom->radius;
+	double *contact_radius = atom->contact_radius;
 	double *damage = atom->damage;
 	double *plastic_strain = atom->eff_plastic_strain;
+	double *rho = atom->rho;
 	//double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
 	//double *damage = atom->damage;
 	int *type = atom->type;
@@ -482,6 +521,8 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
 	float **damage_onset_strain = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
+	Matrix3d eye;
+	eye.setIdentity();
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -497,6 +538,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	dtRelative = 1.0e22;
 
 	for (i = 0; i < nlocal; i++) {
+
 		if (mol[i] < 0) {
 			continue; // Particle i is not a valid SPH particle (anymore). Skip all interactions with this particle.
 		}
@@ -504,6 +546,13 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 		itype = type[i];
 		jnum = npartner[i];
 		voli = vfrac[i];
+
+		// initialize aveage mass density
+		h = 2.0 * radius[i];
+		r = 0.0;
+		spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+		rho_average[i] = wf * voli * rho[i];
+		shepardWeight[i] = wf * voli;
 
 		for (idim = 0; idim < 3; idim++) {
 			x0i(idim) = x0[i][idim];
@@ -566,7 +615,8 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			/*
 			 * force contribution -- note that the kernel gradient correction has been absorbed into PK1
 			 */
-			f_stress = voli * volj * (PK1[i] + PK1[j]) * g;
+
+			f_stress = -voli * volj * (PK1[i] + PK1[j]) * g;
 
 			/*
 			 * artificial viscosity
@@ -650,6 +700,9 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				ev_tally_xyz(i, j, nlocal, 0, 0.0, 0.0, sumForces(0), sumForces(1), sumForces(2), dx(0), dx(1), dx(2));
 			}
 
+			rho_average[i] += wf * volj * rho[j];
+			shepardWeight[i] += wf * volj;
+
 			// check if a particle has moved too much w.r.t another particle
 			if (r > r0) {
 				if (update_method == UPDATE_CONSTANT_THRESHOLD) {
@@ -674,12 +727,12 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			if (failureModel[itype].failure_max_pairwise_strain) {
 
 				strain1d = (r - r0) / r0;
-				if (domain->dimension == 2) {
-					strain1d_max = 2.0 * Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
-				} else {
-					strain1d_max = Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
-				}
-				softening_strain = 0.1 * strain1d_max;
+				//if (domain->dimension == 2) {
+				//	strain1d_max = 2.0 * Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
+				//} else {
+				strain1d_max = Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
+				//}
+				softening_strain = 2.0 * strain1d_max;
 
 				if (strain1d > strain1d_max) {
 					degradation_ij[i][jj] = (strain1d - strain1d_max) / softening_strain;
@@ -718,7 +771,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 //			}
 
 			if (failureModel[itype].integration_point_wise) {
-			//if (false) {
+				//if (false) {
 				if ((damage[i] > 0.99) || (damage[j] > 0.99)) {
 					if (r > r0 + h) {
 						softening_strain = 0.5 * h;
@@ -737,7 +790,18 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	for (i = 0; i < nlocal; i++) {
 		if (shepardWeight[i] != 0.0) {
 			hourglass_error[i] /= shepardWeight[i];
+			rho_average[i] /= shepardWeight[i];
+
+			// mass density smoothing
+			if (update->ntimestep % 30 == 0) {
+				//printf("timestep=%ld, rho=%f, avg rho=%f\n", update->ntimestep, rho[i], rho_average[i]);
+				rho[i] = rho_average[i];
+			}
+
+		} else {
+			rho_average[i] = rho[i];
 		}
+
 	}
 
 	if (vflag_fdotr)
@@ -804,13 +868,12 @@ void PairTlsph::AssembleStress() {
 				strain = 0.5 * (Fincr[i].transpose() * Fincr[i] - eye);
 				mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
 
-				//double oldVol = rmass[i] / rho[i];
-				//double newVol = oldVol + dt * oldVol * d_iso;
-				//rho[i] = rmass[i] / newVol;
+				// update curent mass density based on stretch rate tensor
 				double drho_dt = -rho[i] * d_iso;
 				rho[i] += drho_dt * dt;
 
-				//rho = rmass[i] / (detF[i] * vfrac[i]); // current mass density
+				// alternative method for determining current mass density
+				//rho[i] = rmass[i] / (detF[i] * vfrac[i]);
 				vol_specific_energy = mass_specific_energy * rho[i]; // energy per current volume
 
 				/*
@@ -2159,9 +2222,9 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 	} else if (failureModel[itype].failure_max_plastic_strain) {
 		if (eff_plastic_strain[i] >= Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) {
 			damage_flag = true;
-			damage[i] = 1.0;
-			//double damage_gap = 0.1 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
-			//damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
+			//damage[i] = 1.0;
+			double damage_gap = 0.5 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
+			damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
 		}
 	} else if (failureModel[itype].failure_johnson_cook) {
 
@@ -2186,7 +2249,7 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 	 * Apply damage to integration point
 	 */
 
-	damage[i] = MIN(damage[i], 1.0);
+	damage[i] = MIN(damage[i], 0.8);
 
 	if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
 		stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
@@ -2195,5 +2258,4 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 	}
 
 }
-
 

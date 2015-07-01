@@ -83,6 +83,8 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	velocity_gradient_required = false; // turn off computation of velocity gradient by default
 	density_summation = velocity_gradient = false;
 
+	d_iso_difference = NULL;
+
 	comm_forward = 18; // this pair style communicates 18 doubles to ghost atoms
 	updateFlag = 0;
 }
@@ -116,6 +118,7 @@ PairULSPH::~PairULSPH() {
 		delete[] F;
 		delete[] rho;
 		delete[] effm;
+		delete[] d_iso_difference;
 
 	}
 }
@@ -294,6 +297,8 @@ void PairULSPH::PreCompute() {
 
 			L[i].setZero();
 			F[i].setZero();
+
+			d_iso_difference[i] = 0.0;
 		}
 	}
 
@@ -384,7 +389,7 @@ void PairULSPH::PreCompute() {
 	 */
 
 	bool Shape_Matrix_Inversion_Success = false;
-	SelfAdjointEigenSolver<Matrix2d> es;
+	SelfAdjointEigenSolver < Matrix2d > es;
 	SelfAdjointEigenSolver<Matrix3d> es3d;
 
 	for (i = 0; i < nlocal; i++) {
@@ -429,7 +434,7 @@ void PairULSPH::PreCompute() {
 
 				} else { // 3d
 					if (fabs(K[i].determinant()) > 1.0e-8) {
-							Shape_Matrix_Inversion_Success = true;
+						Shape_Matrix_Inversion_Success = true;
 					} else {
 						//cout << endl << "we have a problem with K due to a small determinant; this is K" << endl << K[i] << endl;
 						reconstruct_rank_deficient_shape_matrix(K[i]);
@@ -495,12 +500,11 @@ void PairULSPH::compute(int eflag, int vflag) {
 	double r_ref, weight, p;
 	//int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 
-	// double ini_dist, weight;
-	// double *contact_radius = atom->contact_radius;
+	double ini_dist;
 	Matrix3d S, D, V, eye;
 	eye.setIdentity();
-	// int k;
-	SelfAdjointEigenSolver<Matrix3d> es;
+	int k;
+	SelfAdjointEigenSolver < Matrix3d > es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -530,6 +534,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 		rho = new double[nmax];
 		delete[] effm;
 		effm = new double[nmax];
+		delete[] d_iso_difference;
+		d_iso_difference = new double[nmax];
 	}
 
 // zero accumulators
@@ -537,6 +543,11 @@ void PairULSPH::compute(int eflag, int vflag) {
 		shepardWeight[i] = 0.0;
 		smoothVel[i].setZero();
 		numNeighs[i] = 0;
+
+		h = 2.0 * radius[i];
+		r = 0.0;
+		spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+		d_iso_difference[i] = wf * vfrac[i] * vfrac[i];
 	}
 
 	/*
@@ -663,30 +674,32 @@ void PairULSPH::compute(int eflag, int vflag) {
 					if (p > 0.0) { // we are in tension
 						r_ref = contact_radius[i] + contact_radius[j];
 						weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(r_ref, h);
-						S += 0.1 * weight * p * eye;
+						weight = pow(weight, 4.0);
+						S -= 0.3 * weight * p * eye;
 					}
 				}
-
-				f_stress = -ivol * jvol * S * g; // DO NOT TOUCH SIGN
 
 				/*
 				 * artificial stress to control tensile instability
 				 */
-//				if (true) { //(artificial_stress_flag == true) {
-//					ini_dist = contact_radius[i] + contact_radius[j];
-//					weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(ini_dist, h);
-//					weight = pow(weight, 4.0);
-//
-//					es.compute(S);
-//					D = es.eigenvalues().asDiagonal();
-//					for (k = 0; k < 3; k++) {
-//						if (D(k, k) > 0.0) {
-//							D(k, k) -= weight * 1.0 * D(k, k);
-//						}
-//					}
-//					V = es.eigenvectors();
-//					S = V * D * V.inverse();
-//				}
+				if (true) { //(artificial_stress_flag == true) {
+					ini_dist = contact_radius[i] + contact_radius[j];
+					weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(ini_dist, h);
+					weight = pow(weight, 4.0);
+
+					es.compute(S);
+					D = es.eigenvalues().asDiagonal();
+					for (k = 0; k < 3; k++) {
+						if (D(k, k) > 0.0) {
+							D(k, k) -= weight * 0.1 * D(k, k);
+						}
+					}
+					V = es.eigenvectors();
+					S = V * D * V.inverse();
+				}
+
+				f_stress = -ivol * jvol * S * g; // DO NOT TOUCH SIGN
+
 				/*
 				 * artificial viscosity -- alpha is dimensionless
 				 * MonaghanBalsara form of the artificial viscosity
@@ -722,6 +735,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 				shepardWeight[i] += jvol * wf;
 				smoothVel[i] += jvol * wf * dvint;
 				numNeighs[i] += 1;
+				d_iso_difference[i] += jvol * wf * jvol;
 
 				if (j < nlocal) {
 					f[j][0] -= sumForces(0);
@@ -732,6 +746,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 					shepardWeight[j] += ivol * wf;
 					smoothVel[j] -= ivol * wf * dvint;
 					numNeighs[j] += 1;
+					d_iso_difference[j] += ivol * wf * ivol;
 				}
 
 				// tally atomistic stress tensor
@@ -753,8 +768,11 @@ void PairULSPH::compute(int eflag, int vflag) {
 		if (setflag[itype][itype] == 1) {
 			if (shepardWeight[i] != 0.0) {
 				smoothVel[i] /= shepardWeight[i];
+				d_iso_difference[i] /= shepardWeight[i];
+			    //printf("abs=%f, diff = %f\n", L[i].trace(), d_iso_difference[i] );
 			} else {
 				smoothVel[i].setZero();
+				d_iso_difference[i] = 0.0;
 			}
 		} // end check if particle is SPH-type
 	} // end loop over i = 0 to nlocal
@@ -803,6 +821,8 @@ void PairULSPH::AssembleStressTensor() {
 			vol = vfrac[i];
 			rho = rmass[i] / vfrac[i];
 
+			//printf("rho = %f\n", rho);
+
 			switch (eos[itype]) {
 			default:
 				error->one(FLERR, "unknown EOS.");
@@ -821,7 +841,8 @@ void PairULSPH::AssembleStressTensor() {
 				PerfectGasEOS(Lookup[EOS_PERFECT_GAS_GAMMA][itype], vol, rmass[i], e[i], newPressure, c0[i]);
 				break;
 			case EOS_LINEAR:
-				newPressure = Lookup[BULK_MODULUS][itype] * rho / Lookup[REFERENCE_DENSITY][itype] - 1.0;
+				newPressure = Lookup[BULK_MODULUS][itype] * (rho / Lookup[REFERENCE_DENSITY][itype] - 1.0);
+				//printf("p=%f, rho0=%f, rho=%f\n", newPressure, Lookup[REFERENCE_DENSITY][itype], rho);
 				c0[i] = Lookup[REFERENCE_SOUNDSPEED][itype];
 				break;
 			}
@@ -1679,6 +1700,8 @@ void *PairULSPH::extract(const char *str, int &i) {
 		return (void *) &updateFlag;
 	} else if (strcmp(str, "smd/ulsph/effective_modulus_ptr") == 0) {
 		return (void *) effm;
+	} else if (strcmp(str, "smd/ulsph/d_iso_difference_ptr") == 0) {
+			return (void *) d_iso_difference;
 	}
 
 	return NULL;
