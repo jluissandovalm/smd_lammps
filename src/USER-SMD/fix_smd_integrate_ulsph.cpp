@@ -313,11 +313,11 @@ void FixSMDIntegrateUlsph::final_integrate() {
 			vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
 			vfrac[i] += vol_increment;
 
-			if (update->ntimestep % 30 == 0) {
-				if (d_iso_difference[i] != 0.0) {
-					vfrac[i] = d_iso_difference[i];
-				}
-			}
+//			if (update->ntimestep % 30 == 0) {
+//				if (d_iso_difference[i] != 0.0) {
+//					vfrac[i] = d_iso_difference[i];
+//				}
+//			}
 
 			rho[i] = rmass[i] / vfrac[i];
 

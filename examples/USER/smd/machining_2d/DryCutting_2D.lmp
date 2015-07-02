@@ -33,7 +33,7 @@
   variable        eosC6      equal   0.0000
  
   variable  l0                equal  0.125
-  variable  h                 equal  3.000*${l0}      # SPH kernel diameter, from mesh.data file
+  variable  h                 equal  2.410*${l0}      # SPH kernel diameter, from mesh.data file
   variable  contact_stiffness equal  0.880*${E}       # contact force amplitude
   variable  skin              equal  1.000*${h}       # Verlet list range
   variable  cr                equal  0.500*${l0}      # contact radius (only used for visualization)
@@ -48,7 +48,7 @@
   dimension       2      # dimensions
   boundary        f  f  p  # range x,y,z
   atom_style      smd
-  comm_style      brick 
+  comm_style      tiled 
   neighbor        ${skin} bin
   neigh_modify    every 5 delay 0 check yes exclude type 2 2 one 10000 page 100000
   comm_modify     vel yes
@@ -96,19 +96,10 @@
 # - Interaction between particles type 1 (block)
 #   - Define a Material model ------ <rh0>  <E>  <nu> <Q1> <Q2> <HG> <Cp>
   pair_coeff      1 1 tlsph *COMMON    ${rho} ${E} ${nu} 0.10 00.0 10  875e3                                &
-                           *JOHNSON_COOK ${JC_A} ${JC_B} ${JC_N} ${JC_C} ${JC_epsdot0} ${rt} ${mt} ${JC_M} &
-                          *FAILURE_JOHNSON_COOK ${JC_D1} ${JC_D2} ${JC_D3} ${JC_D4} ${JC_epsdot0}         &
-                          *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6}  &
-                        *END
-
-#pair_coeff      1 1 tlsph *COMMON    ${rho} ${E} ${nu} 1.00 00.0 10  875e3 &
-#                          *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
-#                          *LINEAR_PLASTICITY 0.7 0 &
-#                          *FAILURE_MAX_PLASTIC_STRAIN 0.3 &
-#                          *END
-
-
-                         #*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6}  &
+                            *JOHNSON_COOK ${JC_A} ${JC_B} ${JC_N} ${JC_C} ${JC_epsdot0} ${rt} ${mt} ${JC_M} &
+                            *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6}  &
+                            *FAILURE_MAX_PAIRWISE_STRAIN 0.5 &
+                            *END
 
 # - Interaction between particles type 2 (tool)
   pair_coeff      2 2 none
@@ -156,8 +147,8 @@
 ####################################################################################################
 
 # PERFORM BALANCE OF PROCESSING LOAD
-  balance         1.0 shift x 10 1.05
-  #balance         1.0 rcb
+  #balance         1.0 shift x 10 1.05
+  balance         1.0 rcb
   run 1
 
   timestep       0.003

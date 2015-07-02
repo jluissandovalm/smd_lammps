@@ -14,7 +14,7 @@ dimension 2 	# this is a 2d plane-strain simulation
 boundary 	sm sm p # simulation box boundaries
 atom_style 	smd
 neighbor 	${skin} bin
-neigh_modify 	every 10 delay 0 check no # re-build neighbor list every 10 steps
+neigh_modify 	every 1  delay 0 check no # re-build neighbor list every 10 steps
 newton 		off 	# required for SMD simulations!
 comm_modify 	vel yes # required for SMD simulations!
 atom_modify	map array
@@ -33,7 +33,7 @@ region 		top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
 region 		bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
 group top region top # top row of particles
 group bot region bot # bottom row of particles
-pair_style hybrid/overlay tlsph *UPDATE_PAIRWISE 0.1 smd/hertz 1.0 # activate Total-Lagrangian SPH
+pair_style hybrid/overlay tlsph smd/hertz 1.0 # activate Total-Lagrangian SPH
 #pair_style tlsph
 
 variable        JC_A equal 0.3241
@@ -54,12 +54,14 @@ variable        eosC6 equal 0.0
 # rh0 E nu Q1 Q2 hg Cp
 pair_coeff 	1 1 tlsph *COMMON ${rho} ${E} ${nu} 0.10 0.0 10 875e3 &
 		*JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} 293.15 502 ${JC_M} &
-		*FAILURE_JOHNSON_COOK  -0.77 1.45  0.47 -0.5 1.0e-3 &
 		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
+                *FAILURE_MAX_PAIRWISE_STRAIN 0.5 &
 		*END
 
 pair_coeff      1 1 smd/hertz ${E}
 
+
+		#*FAILURE_JOHNSON_COOK  -0.77 1.45  0.47 -0.5 1.0e-3 &
 #pair_coeff 	1 1 *COMMON ${rho} ${E} ${nu} 0.10 00.0 10 875e3 &
 #		*EOS_LINEAR &
 #		*LINEAR_STRENGTH &
@@ -95,7 +97,7 @@ fix botfix bot setforce 0 0 0
 fix dtfix all smd/adjust_dt 0.1
 variable stress equal 0.5*(f_botfix[2]-f_topfix[2])/20
 variable strain equal (2.0*${vel}*f_dtfix/20) # strain: relative elongation
-fix integration_fix all smd/integrate_tlsph xsph
+fix integration_fix all smd/integrate_tlsph
 fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain

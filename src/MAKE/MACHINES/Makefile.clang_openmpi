@@ -24,7 +24,7 @@ DEPFLAGS =	-M
 
 LINK =		mpic++
 #LINKFLAGS = -O2 -g -fsanitize=address -fno-omit-frame-pointer
-LINKFLAGS =	-O3 -ffast-math -D__extern_always_inline=inline
+LINKFLAGS =	-O3 -ffast-math -D__extern_always_inline=inline -lprofiler
 LIB =       -lstdc++
 SIZE =		size
 

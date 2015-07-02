@@ -681,23 +681,23 @@ void PairULSPH::compute(int eflag, int vflag) {
 
 				/*
 				 * artificial stress to control tensile instability
+				 * Only works if particles are uniformly spaced initially.
 				 */
-				if (true) { //(artificial_stress_flag == true) {
-					ini_dist = contact_radius[i] + contact_radius[j];
-					weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(ini_dist, h);
-					weight = pow(weight, 4.0);
-
-					es.compute(S);
-					D = es.eigenvalues().asDiagonal();
-					for (k = 0; k < 3; k++) {
-						if (D(k, k) > 0.0) {
-							D(k, k) -= weight * 0.1 * D(k, k);
-						}
-					}
-					V = es.eigenvectors();
-					S = V * D * V.inverse();
-				}
-
+//				if (true) { //(artificial_stress_flag == true) {
+//					ini_dist = contact_radius[i] + contact_radius[j];
+//					weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(ini_dist, h);
+//					weight = pow(weight, 4.0);
+//
+//					es.compute(S);
+//					D = es.eigenvalues().asDiagonal();
+//					for (k = 0; k < 3; k++) {
+//						if (D(k, k) > 0.0) {
+//							D(k, k) -= weight * 0.1 * D(k, k);
+//						}
+//					}
+//					V = es.eigenvectors();
+//					S = V * D * V.inverse();
+//				}
 				f_stress = -ivol * jvol * S * g; // DO NOT TOUCH SIGN
 
 				/*
