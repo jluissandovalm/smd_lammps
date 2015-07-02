@@ -89,16 +89,14 @@ protected:
 	 * per atom arrays
 	 */
 	Matrix3d *K, *PK1, *Fdot, *Fincr;
-	Matrix3d *d; // unrotated rate-of-deformation tensor
 	Matrix3d *R; // rotation matrix
 	Matrix3d *FincrInv;
 	Matrix3d *D, *W; // strain rate and spin tensor
 	Vector3d *smoothVelDifference;
 	Matrix3d *CauchyStress;
-	double *detF, *shepardWeight, *particle_dt;
+	double *detF, *particle_dt;
 	double *hourglass_error;
 	int *numNeighsRefConfig;
-	double *rho_average; // average mass density used for smoothing the mass density
 
 	int nmax; // max number of atoms on this proc
 	double hMin; // minimum kernel radius for two particles

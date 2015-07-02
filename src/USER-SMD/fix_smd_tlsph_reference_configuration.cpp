@@ -103,35 +103,24 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 	//return;
 
 	//printf("in FixSMD_TLSPH_ReferenceConfiguration::pre_exchange()\n");
-	double **defgrad0 = atom->smd_data_9;
+	double **defgrad = atom->smd_data_9;
 	double *radius = atom->radius;
-	//double *contact_radius = atom->contact_radius;
+	double *rho = atom->rho;
+	double *vfrac = atom->vfrac;
 	double **x = atom->x;
 	double **x0 = atom->x0;
-	double *vfrac = atom->vfrac;
+	double *rmass = atom->rmass;
 	int nlocal = atom->nlocal;
 	int i, itmp;
-	double J;
-	Matrix3d Ftotal;
-	Matrix3d C, eye;
 	int *mask = atom->mask;
 	if (igroup == atom->firstgroup) {
 		nlocal = atom->nfirst;
 	}
 
-	eye.setIdentity();
-
-	Matrix3d F0;
-
 	int *updateFlag_ptr = (int *) force->pair->extract("smd/tlsph/updateFlag_ptr", itmp);
 	if (updateFlag_ptr == NULL) {
 		error->one(FLERR,
 				"fix FixSMD_TLSPH_ReferenceConfiguration failed to access updateFlag pointer. Check if a pair style exist which calculates this quantity.");
-	}
-
-	Matrix3d *Fincr = (Matrix3d *) force->pair->extract("smd/tlsph/Fincr_ptr", itmp);
-	if (Fincr == NULL) {
-		error->all(FLERR, "FixSMDIntegrateTlsph::updateReferenceConfiguration() failed to access Fincr array");
 	}
 
 	int *nn = (int *) force->pair->extract("smd/tlsph/numNeighsRefConfig_ptr", itmp);
@@ -150,52 +139,34 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 		for (i = 0; i < nlocal; i++) {
 
 			if (mask[i] & groupbit) {
-				// need determinant of old deformation gradient associated with reference configuration
-				F0(0, 0) = defgrad0[i][0];
-				F0(0, 1) = defgrad0[i][1];
-				F0(0, 2) = defgrad0[i][2];
-				F0(1, 0) = defgrad0[i][3];
-				F0(1, 1) = defgrad0[i][4];
-				F0(1, 2) = defgrad0[i][5];
-				F0(2, 0) = defgrad0[i][6];
-				F0(2, 1) = defgrad0[i][7];
-				F0(2, 2) = defgrad0[i][8];
 
 				// re-set x0 coordinates
 				x0[i][0] = x[i][0];
 				x0[i][1] = x[i][1];
 				x0[i][2] = x[i][2];
 
-				// compute current total deformation gradient
-				Ftotal = F0 * Fincr[i];	// this is the total deformation gradient: reference deformation times incremental deformation
-
-				// store the current deformation gradient the reference deformation gradient
-				defgrad0[i][0] = Ftotal(0, 0);
-				defgrad0[i][1] = Ftotal(0, 1);
-				defgrad0[i][2] = Ftotal(0, 2);
-				defgrad0[i][3] = Ftotal(1, 0);
-				defgrad0[i][4] = Ftotal(1, 1);
-				defgrad0[i][5] = Ftotal(1, 2);
-				defgrad0[i][6] = Ftotal(2, 0);
-				defgrad0[i][7] = Ftotal(2, 1);
-				defgrad0[i][8] = Ftotal(2, 2);
-
+				// re-set deformation gradient
+				defgrad[i][0] = 1.0;
+				defgrad[i][1] = 0.0;
+				defgrad[i][2] = 0.0;
+				defgrad[i][3] = 0.0;
+				defgrad[i][4] = 1.0;
+				defgrad[i][5] = 0.0;
+				defgrad[i][6] = 0.0;
+				defgrad[i][7] = 0.0;
+				defgrad[i][8] = 1.0;
 				/*
 				 * Adjust particle volume as the reference configuration is changed.
 				 * We safeguard against excessive deformations by limiting the adjustment range
 				 * to the intervale J \in [0.9..1.1]
 				 */
-				J = Fincr[i].determinant();
-				J = MAX(J, 0.8);
-				J = MIN(J, 1.2);
-				vfrac[i] *= J;
-
+				vfrac[i] = rmass[i] / rho[i];
+//
 				if (nn[i] < 15) {
 					radius[i] *= 1.2;
-				} else {
-					radius[i] *= pow(J, 1.0 / domain->dimension);
-				}
-
+				}// else //{
+				//	radius[i] *= pow(J, 1.0 / domain->dimension);
+				//}
 			}
 		}
 
@@ -230,7 +201,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 // calculate npartner for each owned atom
 // nlocal_neigh = nlocal when neigh list was built, may be smaller than nlocal
 
-	double **x0 = atom->x0;
+	double **x0 = atom->x;
 	double **defgrad0 = atom->smd_data_9;
 	double *radius = atom->radius;
 	int *type = atom->type;
