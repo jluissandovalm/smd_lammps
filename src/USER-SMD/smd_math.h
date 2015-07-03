@@ -100,14 +100,13 @@ static inline bool PolDec(Matrix3d M, Matrix3d &R, Matrix3d &T, bool scaleF) {
  * Pseudo-inverse via SVD
  */
 
-static inline Matrix3d pseudo_inverse_SVD(Matrix3d M) {
+static inline void pseudo_inverse_SVD(Matrix3d &M) {
 
-	JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV);
+	//JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV);
+	JacobiSVD < Matrix3d > svd(M, ComputeFullU); // one Eigevector base is sufficient because matrix is square and symmetric
 
 	Vector3d singularValuesInv;
 	Vector3d singularValues = svd.singularValues();
-	Matrix3d U = svd.matrixU();
-	Matrix3d V = svd.matrixV();
 
 //cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
 //cout << "Its singular values are:" << endl << singularValues << endl;
@@ -121,12 +120,7 @@ static inline Matrix3d pseudo_inverse_SVD(Matrix3d M) {
 		}
 	}
 
-	//singularValuesInv *= -1.0; // scale with -1 because spiky gradient function is negative throughout its range
-
-	Matrix3d pInv;
-	pInv = V.transpose() * singularValuesInv.asDiagonal() * U;
-
-	return pInv;
+	M = svd.matrixU() * singularValuesInv.asDiagonal() * svd.matrixU().transpose();
 }
 
 /*

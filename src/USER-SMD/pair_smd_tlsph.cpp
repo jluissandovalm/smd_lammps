@@ -57,7 +57,7 @@ using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
 
-#define TIME_INTEGRATE_DEFGRAD false
+#define TIME_INTEGRATE_DEFGRAD true
 #define JAUMANN false
 #define DETF_MIN 0.2 // maximum compression deformation allow
 #define DETF_MAX 2.0 // maximum tension deformation allowed
@@ -268,19 +268,8 @@ void PairTlsph::PreCompute() {
 				smoothVelDifference[i].setZero();
 			}
 
-			K[i] = pseudo_inverse_SVD(K[i]);
-			//K[i].setIdentity();
-			//cout << endl << endl << endl << "this is F before correction" << endl << Fincr[i] << endl;
-			//cout << endl << "this is K" << endl << K[i] << endl;
+			pseudo_inverse_SVD(K[i]);
 			Fdot[i] *= K[i];
-
-//			for (j = 0; j < 3; j++) {
-//				for (int k = 0; k < 3; k++) {
-//					if (fabs(Fdot[i](j, k)) < 1.0e-5) {
-//						Fdot[i](j, k) = 0.0;
-//					}
-//				}
-//			}
 
 			if (TIME_INTEGRATE_DEFGRAD) {
 			// incremental update of deformation gradient

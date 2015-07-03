@@ -388,85 +388,27 @@ void PairULSPH::PreCompute() {
 	 * invert shape matrix and compute corrected quantities
 	 */
 
-	bool Shape_Matrix_Inversion_Success = false;
-	SelfAdjointEigenSolver < Matrix2d > es;
-	SelfAdjointEigenSolver<Matrix3d> es3d;
-
 	for (i = 0; i < nlocal; i++) {
 		itype = type[i];
 		if (setflag[itype][itype]) {
 			if (gradient_correction_flag) {
-				Shape_Matrix_Inversion_Success = false;
-
-				if (domain->dimension == 2) {
-					Matrix2d K2d;
-					K2d(0, 0) = K[i](0, 0);
-					K2d(0, 1) = K[i](0, 1);
-					K2d(1, 0) = K[i](1, 0);
-					K2d(1, 1) = K[i](1, 1);
-
-					if (fabs(K2d.determinant()) > 1.0e-2) {
-						K2di = K2d.inverse();
-						// check if inverse of K2d is reasonable
-						es.compute(K2d);
-						if ((fabs(es.eigenvalues()(0)) > 1.0e-1) && (fabs(es.eigenvalues()(1)) > 1.0e-1)) {
-							Shape_Matrix_Inversion_Success = true;
-						} else {
-							//cout << endl << "eigenvalues of K: " << endl << es.eigenvalues() << endl;
-						}
-					}
-
-					if (Shape_Matrix_Inversion_Success) {
-						K[i].setZero();
-						K[i](0, 0) = K2di(0, 0);
-						K[i](0, 1) = K2di(0, 1);
-						K[i](1, 0) = K2di(1, 0);
-						K[i](1, 1) = K2di(1, 1);
-						K[i](2, 2) = 1.0;
-					} else {
-						//cout << endl << "we have a problem with K; this is K" << endl << K2d << endl;
-						//cout << "this is Ki" << endl << K2di << endl;
-						//printf("this is the determinant %g\n", K2d.determinant());
-
-						K[i].setIdentity();
-						//error->one(FLERR, "");
-					}
-
-				} else { // 3d
-					if (fabs(K[i].determinant()) > 1.0e-8) {
-						Shape_Matrix_Inversion_Success = true;
-					} else {
-						//cout << endl << "we have a problem with K due to a small determinant; this is K" << endl << K[i] << endl;
-						reconstruct_rank_deficient_shape_matrix(K[i]);
-						//K[i](0,0) = 1.0;
-						Shape_Matrix_Inversion_Success = true;
-					}
-
-					if (Shape_Matrix_Inversion_Success) {
-						K3di = K[i].inverse();
-						K[i] = K3di;
-					} else {
-						K[i].setIdentity();
-
-					}
-				} // end if 3d
-
+				pseudo_inverse_SVD(K[i]);
 				L[i] *= K[i];
 				F[i] *= K[i];
-
-				/*
-				 * accumulate strain increments
-				 * we abuse the atom array "atom_data_9" for this purpose, which was originally designed to hold the deformation gradient.
-				 */
-				D = update->dt * 0.5 * (L[i] + L[i].transpose());
-				atom_data9[i][0] += D(0, 0); // xx
-				atom_data9[i][1] += D(1, 1); // yy
-				atom_data9[i][2] += D(2, 2); // zz
-				atom_data9[i][3] += D(0, 1); // xy
-				atom_data9[i][4] += D(0, 2); // xz
-				atom_data9[i][5] += D(1, 2); // yz
-
 			} // end if (gradient_correction[itype]) {
+
+			/*
+			 * accumulate strain increments
+			 * we abuse the atom array "atom_data_9" for this purpose, which was originally designed to hold the deformation gradient.
+			 */
+			D = update->dt * 0.5 * (L[i] + L[i].transpose());
+			atom_data9[i][0] += D(0, 0); // xx
+			atom_data9[i][1] += D(1, 1); // yy
+			atom_data9[i][2] += D(2, 2); // zz
+			atom_data9[i][3] += D(0, 1); // xy
+			atom_data9[i][4] += D(0, 2); // xz
+			atom_data9[i][5] += D(1, 2); // yz
+
 		} // end if (setflag[itype][itype])
 	} // end loop over i = 0 to nlocal
 
@@ -769,7 +711,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 			if (shepardWeight[i] != 0.0) {
 				smoothVel[i] /= shepardWeight[i];
 				d_iso_difference[i] /= shepardWeight[i];
-			    //printf("abs=%f, diff = %f\n", L[i].trace(), d_iso_difference[i] );
+				//printf("abs=%f, diff = %f\n", L[i].trace(), d_iso_difference[i] );
 			} else {
 				smoothVel[i].setZero();
 				d_iso_difference[i] = 0.0;
@@ -1701,7 +1643,7 @@ void *PairULSPH::extract(const char *str, int &i) {
 	} else if (strcmp(str, "smd/ulsph/effective_modulus_ptr") == 0) {
 		return (void *) effm;
 	} else if (strcmp(str, "smd/ulsph/d_iso_difference_ptr") == 0) {
-			return (void *) d_iso_difference;
+		return (void *) d_iso_difference;
 	}
 
 	return NULL;
