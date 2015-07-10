@@ -1,0 +1,420 @@
+region fiber cylinder z 12.314099 22.021947 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 14.315008 45.076943 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 28.199304 67.814087 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 11.063438 81.798498 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 15.202011 135.510875 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 32.138366 149.670641 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 20.925923 170.812606 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 11.014338 206.614115 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 11.142526 234.224020 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 37.919747 263.712381 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 36.351104 17.516961 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 51.584219 45.220016 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 52.649651 78.020993 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 63.708329 98.371698 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 27.631847 103.294543 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 47.492188 121.775736 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 49.949521 169.951194 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 55.557949 196.367938 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 34.880011 230.035292 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 58.954560 254.904413 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 79.341664 19.350626 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 92.627786 49.191031 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 72.352009 66.191669 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 93.701001 95.209394 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 72.126268 130.348448 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 88.862023 147.976206 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 72.400947 167.253739 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 97.651154 215.792831 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 57.371500 232.625321 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 64.191999 278.880144 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 105.093560 16.977478 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 113.707707 38.397146 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 111.801068 75.374997 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 128.170647 102.608027 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 125.932826 132.122753 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 125.337256 163.895079 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 101.156009 181.759257 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 137.457672 227.626010 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 91.641656 248.439248 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 118.757170 262.235739 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 137.861230 13.041847 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 139.589039 38.568655 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 136.471712 67.220965 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 176.762159 107.275075 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 152.074168 89.063295 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 151.235054 146.058757 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 120.115980 200.007671 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 155.913190 209.338386 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 150.845631 254.490402 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 141.362486 275.314653 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 160.889641 20.421899 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 174.390790 43.009201 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 159.125324 60.896061 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 188.741686 81.676195 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 160.742215 124.570515 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 197.302184 133.558673 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 151.709317 181.699932 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 181.159552 172.214661 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 190.793946 227.879021 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 163.495910 278.065164 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 181.851961 11.360954 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 216.211639 61.975297 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 195.602633 52.115295 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 210.970649 85.578125 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 200.116613 106.429212 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 227.001184 161.981266 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 202.603060 159.820823 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 214.469538 184.351601 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 198.299021 199.497058 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 200.870979 272.365101 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 228.255765 29.496586 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 249.559990 37.906401 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 244.994125 86.349539 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 235.360653 108.273729 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 220.538387 129.636793 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 246.418985 151.179668 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 250.731446 180.386226 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 243.268722 205.639541 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 214.074502 232.739658 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 226.851230 252.355632 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 251.968588 13.056863 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 275.243549 37.342083 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 242.088555 60.451579 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 265.995097 100.439351 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 254.361530 121.459765 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 267.215024 143.087692 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 271.527789 172.681534 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 270.700789 198.509318 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 246.649210 235.914445 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 280.796223 256.566201 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 295.869524 14.109452 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 307.653889 48.008150 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 271.991584 63.252204 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 290.962800 91.372577 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 282.128920 116.060450 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 303.637181 149.170694 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 298.053495 181.296027 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 292.249552 214.493580 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 298.807053 241.994791 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 307.791420 266.728678 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 322.325637 27.109190 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 312.410881 78.046703 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 307.734862 109.912374 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 319.855227 164.405917 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
+region fiber cylinder z 318.422544 211.286891 11.000000 EDGE EDGE units box
+set region fiber type 2
+set region fiber type 2
+region fiber delete
