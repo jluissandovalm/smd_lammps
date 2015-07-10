@@ -171,6 +171,8 @@ void FixSMDIntegrateUlsph::initial_integrate(int vflag) {
 	double dtfm, vsq, scale;
 	double vxsph_x, vxsph_y, vxsph_z;
 
+	//printf("initial_integrate at timestep %d\n", update->ntimestep);
+
 	/*
 	 * get smoothed velocities from ULSPH pair style
 	 */

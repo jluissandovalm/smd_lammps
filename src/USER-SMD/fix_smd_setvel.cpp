@@ -121,7 +121,8 @@ FixSMDSetVel::~FixSMDSetVel() {
 
 int FixSMDSetVel::setmask() {
 	int mask = 0;
-	mask |= INITIAL_INTEGRATE;
+	//mask |= INITIAL_INTEGRATE;
+	mask |= POST_FORCE;
 	return mask;
 }
 
@@ -225,7 +226,8 @@ void FixSMDSetVel::min_setup(int vflag) {
 
 /* ---------------------------------------------------------------------- */
 
-void FixSMDSetVel::initial_integrate(int vflag) {
+//void FixSMDSetVel::initial_integrate(int vflag) {
+void FixSMDSetVel::post_force(int vflag) {
 	double **x = atom->x;
 	double **f = atom->f;
 	double **v = atom->v;
@@ -297,6 +299,8 @@ void FixSMDSetVel::initial_integrate(int vflag) {
 			input->variable->compute_atom(zvar, igroup, &sforce[0][2], 3, 0);
 
 		modify->addstep_compute(update->ntimestep + 1);
+
+		printf("setting velocity at timestep %d\n", update->ntimestep);
 
 		for (int i = 0; i < nlocal; i++)
 			if (mask[i] & groupbit) {

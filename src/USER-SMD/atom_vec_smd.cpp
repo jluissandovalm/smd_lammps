@@ -50,10 +50,10 @@ AtomVecSMD::AtomVecSMD(LAMMPS *lmp) :
 
 	comm_x_only = 0;
 	comm_f_only = 1;
-	size_forward = 13; // variables that are changed by time integration
+	size_forward = 7; // variables that are changed by time integration
 	size_reverse = 4; // f[3] + de
-	size_border = 37;
-	size_velocity = 3;
+	size_border = 32;
+	size_velocity = 6; // v + vest
 	size_data_atom = 13; // 7 + 3 x0 + 3 x
 	size_data_vel = 4;
 	xcol_data = 11;
@@ -286,6 +286,8 @@ int AtomVecSMD::pack_comm_vel(int n, int *list, double *buf, int pbc_flag, int *
 			dvx = pbc[0] * h_rate[0] + pbc[5] * h_rate[5] + pbc[4] * h_rate[4];
 			dvy = pbc[1] * h_rate[1] + pbc[3] * h_rate[3];
 			dvz = pbc[2] * h_rate[2];
+//			printf("\ndvx = %f, dvy=%f, dvz=%f\n", dvx, dvy, dvz);
+//			printf("dx = %f, dy=%f, dz=%f\n", dx, dy, dz);
 			for (i = 0; i < n; i++) {
 				j = list[i];
 				buf[m++] = x[j][0] + dx;
@@ -481,23 +483,23 @@ int AtomVecSMD::pack_border_vel(int n, int *list, double *buf, int pbc_flag, int
 			buf[m++] = vfrac[j];
 			buf[m++] = contact_radius[j];
 			buf[m++] = e[j];
-			buf[m++] = eff_plastic_strain[j]; // 17
+			buf[m++] = eff_plastic_strain[j]; // 16
 
 			for (int k = 0; k < NMAT_FULL; k++) {
 				buf[m++] = smd_data_9[j][k];
-			} // 26
+			} // 25
 
 			for (int k = 0; k < NMAT_SYMM; k++) {
 				buf[m++] = tlsph_stress[j][k];
-			} // 32
+			} // 31
 
 			buf[m++] = v[j][0];
 			buf[m++] = v[j][1];
-			buf[m++] = v[j][2]; // 35
+			buf[m++] = v[j][2]; // 34
 			buf[m++] = vest[j][0];
 			buf[m++] = vest[j][1];
-			buf[m++] = vest[j][2]; // 38
-			buf[m++] = rho[j]; // 39
+			buf[m++] = vest[j][2]; // 37
+			buf[m++] = rho[j]; // 38
 		}
 	} else {
 
@@ -552,6 +554,8 @@ int AtomVecSMD::pack_border_vel(int n, int *list, double *buf, int pbc_flag, int
 			dvx = pbc[0] * h_rate[0] + pbc[5] * h_rate[5] + pbc[4] * h_rate[4];
 			dvy = pbc[1] * h_rate[1] + pbc[3] * h_rate[3];
 			dvz = pbc[2] * h_rate[2];
+//			printf("\ndvx = %f, dvy=%f, dvz=%f\n", dvx, dvy, dvz);
+//			printf("dx = %f, dy=%f, dz=%f\n", dx, dy, dz);
 			for (i = 0; i < n; i++) {
 				j = list[i];
 				buf[m++] = x[j][0] + dx;
@@ -569,33 +573,34 @@ int AtomVecSMD::pack_border_vel(int n, int *list, double *buf, int pbc_flag, int
 				buf[m++] = vfrac[j];
 				buf[m++] = contact_radius[j];
 				buf[m++] = e[j];
-				buf[m++] = eff_plastic_strain[j]; // 17
+				buf[m++] = eff_plastic_strain[j]; // 16
 
 				for (int k = 0; k < NMAT_FULL; k++) {
 					buf[m++] = smd_data_9[j][k];
-				} // 26
+				} // 25
 
 				for (int k = 0; k < NMAT_SYMM; k++) {
 					buf[m++] = tlsph_stress[j][k];
-				} // 32
+				} // 31
 
 				if (mask[i] & deform_groupbit) {
 					buf[m++] = v[j][0] + dvx;
 					buf[m++] = v[j][1] + dvy;
-					buf[m++] = v[j][2] + dvz; // 25
+					buf[m++] = v[j][2] + dvz; // 34
 					buf[m++] = vest[j][0] + dvx;
 					buf[m++] = vest[j][1] + dvy;
-					buf[m++] = vest[j][2] + dvz; // 38
+					buf[m++] = vest[j][2] + dvz; // 37
 
 				} else {
 					buf[m++] = v[j][0];
 					buf[m++] = v[j][1];
-					buf[m++] = v[j][2]; // 35
+					buf[m++] = v[j][2]; // 34
 					buf[m++] = vest[j][0];
 					buf[m++] = vest[j][1];
-					buf[m++] = vest[j][2]; // 38
-					buf[m++] = rho[j]; // 39
+					buf[m++] = vest[j][2]; // 37
 				}
+
+				buf[m++] = rho[j]; // 38
 			}
 		}
 	}
@@ -688,7 +693,7 @@ void AtomVecSMD::unpack_border_vel(int n, int first, double *buf) {
 		vest[i][0] = buf[m++];
 		vest[i][1] = buf[m++];
 		vest[i][2] = buf[m++]; // 37
-		rho[i] = buf[m++];
+		rho[i] = buf[m++]; // 38 = 32 + v[3] + vest[3]
 	}
 
 	if (atom->nextra_border)
@@ -1291,7 +1296,7 @@ bigint AtomVecSMD::memory_usage() {
 	if (atom->memcheck("damage"))
 		bytes += memory->usage(damage, nmax);
 	if (atom->memcheck("rho"))
-			bytes += memory->usage(rho, nmax);
+		bytes += memory->usage(rho, nmax);
 
 	return bytes;
 }

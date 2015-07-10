@@ -4,7 +4,7 @@
 variable         l0 equal 1.0e0 # lattice spacing in mm
 variable         h equal 1.05*${l0} # horizon based on lattic spacing, plus fudge factor
 variable         K equal 10.0 # bulk modulus
-variable         visc equal 10.0
+variable         visc equal 0.1
 variable         smax equal 1.0
 variable         syield equal 10.0
 variable         G0 equal 0.0
@@ -15,7 +15,7 @@ variable         lin equal 7000 # length input bar: from end of striker to end o
 variable         lsamp equal 7100 # length sample
 variable         lout equal 10100 # length input bar [mm]
 variable         rho_bar equal 2.7e-6 # input, output and striker bars mass density
-variable         rho_sample equal 20.7e-6 # mass density of sample
+variable         rho_sample equal 10*2.7e-6 # mass density of sample
 
 # location of strain gauges
 variable         loc_dms1 equal round(4000/${l0}) # index of particle which represents dms 1
@@ -26,10 +26,10 @@ variable         ltot equal ${lin}+${lout}+${lstr}+${lsamp} # total length of Ho
 variable         vol_one equal ${l0} # volume per particle
 variable         skin equal 1*${l0} # Verlet skin distance
 
-newton           on
+newton           off
 units            si
 dimension        2
-boundary         f f p
+boundary         s f p
 atom_style       smd
 atom_modify      map array
 comm_modify      vel yes
@@ -48,7 +48,7 @@ set             group all volume ${vol_one}
 set             group all smd_contact_radius 0.1
 set             group all mol 1000
 
-region          reg_str block 0 ${lstr} EDGE EDGE EDGE EDGE units box # region where striker is located
+region          reg_str block EDGE ${lstr} EDGE EDGE EDGE EDGE units box # region where striker is located
 region          reg_in block ${lstr} ${lin} EDGE EDGE EDGE EDGE units box # region where input bar is located
 region          reg_samp block ${lin} ${lsamp} EDGE EDGE EDGE EDGE units box # region where sample is located
 region          reg_out block ${lsamp} ${lout} EDGE EDGE EDGE EDGE units box # region where output bar is located
@@ -90,7 +90,7 @@ variable        nu equal 1./3.
 variable        E equal ${K}
 variable        E2d equal ${E}/(1.0-${nu}^2)
 variable        cl equal sqrt(${E2d}/${rho_bar})
-variable        dt equal 0.25*${l0}/${cl}
+variable        dt equal 0.125*${l0}/${cl}
 print           "predicted soundspeed: ${cl}, timestep: ${dt}"
 timestep        ${dt}
 variable        deltat equal (bound(all,xmax)-bound(all,xmin))/${cl}

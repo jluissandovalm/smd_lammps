@@ -62,6 +62,8 @@ PairPeriGCG::PairPeriGCG(LAMMPS *lmp) :
 	G0 = NULL;
 	alpha = NULL;
 
+	cutoff_global = 0.0;
+
 	nBroken = 0;
 }
 
@@ -315,10 +317,10 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 			delVdotDelR = delx * delvelx + dely * delvely + delz * delvelz;
 
 			jvol = vfrac[j];
-			c0 = sqrt(bulkmodulus[itype][jtype] / (0.5 * (rmass[i] / ivol + rmass[j] / jvol))); // soundspeed
-			fvisc = -alpha[itype][jtype] * c0 * 0.5 * (rmass[i] + rmass[j]) * delVdotDelR / (rsq * r);
+//			c0 = sqrt(bulkmodulus[itype][jtype] / (0.5 * (rmass[i] / ivol + rmass[j] / jvol))); // soundspeed
+//			fvisc = -alpha[itype][jtype] * c0 * 0.5 * (rmass[i] + rmass[j]) * delVdotDelR / (rsq * r);
 
-			fpair = fbond + fvisc;
+			fpair = fbond; // + fvisc;
 
 			// project force -- missing factor of r is recovered here as delx, dely ... are not unit vectors
 			f[i][0] += delx * fpair;
@@ -474,6 +476,7 @@ double PairPeriGCG::init_one(int i, int j) {
 
 void PairPeriGCG::init_style() {
 	int i;
+	double hurz;
 
 // error checks
 
@@ -511,12 +514,19 @@ void PairPeriGCG::init_style() {
 	int nlocal = atom->nlocal;
 	double maxrad_one = 0.0;
 
-	for (i = 0; i < nlocal; i++)
-		maxrad_one = MAX(maxrad_one, 2 * radius[i]);
+	for (i = 0; i < nlocal; i++) {
+		maxrad_one = MAX(maxrad_one, 2.0 * radius[i]);
+	}
 
-	printf("proc %d has maxrad %f\n", comm->me, maxrad_one);
+	//printf("proc %d has maxrad %f\n", comm->me, maxrad_one);
 
 	MPI_Allreduce(&maxrad_one, &cutoff_global, atom->ntypes, MPI_DOUBLE, MPI_MAX, world);
+
+
+
+	if (comm->me == 0) {
+		printf("global cutoff for pair style peri/gcg is %f\n", cutoff_global);
+	}
 }
 
 /* ----------------------------------------------------------------------

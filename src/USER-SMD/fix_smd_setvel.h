@@ -32,7 +32,8 @@ class FixSMDSetVel : public Fix {
   void init();
   void setup(int);
   void min_setup(int);
-  void initial_integrate(int);
+  //void initial_integrate(int);
+  void post_force(int);
   double compute_vector(int);
   double memory_usage();
 
