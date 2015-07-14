@@ -56,7 +56,8 @@ class PairPeriGCG : public Pair {
  protected:
   int ifix_peri;
   double **bulkmodulus;
-  double **syield, **smax, **alpha, **G0;
+  double **syield, **smax, **alpha, **G0, **c0;
+  double **rho0;
   double cutoff_global;
 
   void allocate();

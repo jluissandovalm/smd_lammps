@@ -68,7 +68,8 @@ protected:
 	double *rho0; // reference mass density per type
 	double *Q1; // linear artificial viscosity coeff
 	int *eos, *viscosity, *strength; // eos and strength material models
-	bool **artificial_pressure; // true/false: use Monaghan's artificial pressure correction?
+	double **artificial_pressure; // true/false: use Monaghan's artificial pressure correction?
+	double **artificial_stress; // artificial stress amplitude
 
 	double *onerad_dynamic, *onerad_frozen;
 	double *maxrad_dynamic, *maxrad_frozen;
@@ -123,13 +124,12 @@ private:
 	};
 	double **Lookup; // holds per-type material parameters for the quantities defined in enum statement above.
 
-	bool artificial_stress_flag; // artificial stress is needed for material models with strength
 	bool velocity_gradient_required;
 	int updateFlag; // indicates if any relative particle pair movement is significant compared to smoothing length
 
+
 	bool density_summation, density_continuity, velocity_gradient, gradient_correction_flag;
 	double *effm;
-	double *d_iso_difference;
 
 };
 

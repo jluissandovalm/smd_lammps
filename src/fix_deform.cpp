@@ -711,6 +711,7 @@ void FixDeform::end_of_step()
       h_ratelo[i] = -0.5*h_rate[i];
     } else if (set[i].style == VARIABLE) {
       double del = input->variable->compute_equal(set[i].hvar);
+      //printf("setting lo side from %f by increment %f to %f\n", set[i].lo_start,  - 0.5*del, set[i].lo_start - 0.5*del);
       set[i].lo_target = set[i].lo_start - 0.5*del;
       set[i].hi_target = set[i].hi_start + 0.5*del;
       h_rate[i] = input->variable->compute_equal(set[i].hratevar);

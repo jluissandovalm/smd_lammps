@@ -8,11 +8,14 @@ variable        yadd equal 5 # lattice units
 variable        rho equal 1.0e-6
 variable        h equal 2.01*${l0}
 variable        Kresin equal 1 # bulk modulus of resin
+variable        nu equal 0.3
+
 variable        Kfib equal 1 # bulk modulus of fibres
 variable        smax equal 1.0
 variable        artvisc equal 1.0
 variable        nrun equal 10000 # run this many time steps
 # ----
+variable        G equal 3*${Kresin}*(1-2*${nu})/(2*(1+${nu}))
 variable        cr equal 0.5*${l0}
 variable        c0 equal sqrt(${Kresin}/${rho})
 variable        dt equal 0.5*0.125*${h}/${c0}
@@ -63,18 +66,32 @@ set             group all smd_mass_density ${rho}
 #		    *END
 #pair_coeff      1 2 *CROSS *END
 
-pair_style      hybrid/overlay ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION smd/peri_pmb
+#pair_style      hybrid/overlay ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION smd/peri_pmb
+##                           rho.ref c0          Q1         Cv  hg
+#pair_coeff      1 1 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 00.0 &
+#		    *EOS_TAIT 7 &
+#		    *VISCOSITY_NEWTON 1.0e-4 &
+#		    *END
+#pair_coeff      2 2 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 0.0 &
+#		    *EOS_TAIT 7 &
+#		    *VISCOSITY_NEWTON 1.0e-4 &
+#		    *END
+#pair_coeff      1 2 ulsph *CROSS *END
+#pair_coeff      2 2 smd/peri_pmb ${Kfib} ${smax} -1 0 1.0
+
+pair_style      ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION
 #                           rho.ref c0          Q1         Cv  hg
-pair_coeff      1 1 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 00.0 &
+pair_coeff      1 1 *COMMON ${rho}  ${c0} ${artvisc} 0.0 00.0 &
 		    *EOS_TAIT 7 &
 		    *VISCOSITY_NEWTON 1.0e-4 &
 		    *END
-pair_coeff      2 2 ulsph *COMMON ${rho}  ${c0} ${artvisc} 0.0 0.0 &
+pair_coeff      2 2 *COMMON ${rho}  ${c0} ${artvisc} 0.0 0.0 &
 		    *EOS_TAIT 7 &
-		    *VISCOSITY_NEWTON 1.0e-4 &
+		    *STRENGTH_LINEAR ${G} &
+                    *ARTIFICIAL_STRESS 0.3 &
 		    *END
-pair_coeff      1 2 ulsph *CROSS *END
-pair_coeff      2 2 smd/peri_pmb ${Kfib} ${smax} -1 0 1.0
+pair_coeff      1 2 *CROSS *END
+
 
 ####################################################################################################################################
 # COMPUTES FOR ACCESSING INTEGRATION POINT QTYS
@@ -115,7 +132,7 @@ variable        top_displacement equal -f_dtfix*${deform_velocity_half}
 variable        bot_displacement equal  f_dtfix*${deform_velocity_half}
 variable        wall_pos_hi equal ${y1}+v_top_displacement+1.00*${l0}
 variable        wall_pos_lo equal ${y0}+v_bot_displacement-1.00*${l0}
-fix             walls all wall/harmonic yhi v_wall_pos_hi 1.0 ${l0} ${l0}  ylo v_wall_pos_lo 1.0 ${l0} ${l0} units box
+fix             walls all smd/wall/harmonic yhi v_wall_pos_hi 0.0001 ${l0} ${l0}  ylo v_wall_pos_lo 0.0001 ${l0} ${l0} units box
 variable        fhi equal f_walls[1]
 variable        flo equal f_walls[2]
 variable        traction equal 0.5*(v_fhi-v_flo)/${width}
@@ -142,7 +159,7 @@ variable        strain equal -(v_current_height-${initial_height})/${initial_hei
 variable        traction equal (v_fhi-v_flo)/${initial_width}
 fix             extra all print 100 "$t ${strain} ${traction} ${wall_pos_hi} ${wall_pos_lo} ${flo} ${fhi} " file time_traction.dat screen no
 
-thermo          100
+thermo          10
 thermo_style    custom step dt f_dtfix v_strain v_fhi v_flo v_current_width v_current_height v_current_area
 thermo_modify   lost ignore
 

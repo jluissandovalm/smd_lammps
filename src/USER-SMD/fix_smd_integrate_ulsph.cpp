@@ -275,11 +275,6 @@ void FixSMDIntegrateUlsph::final_integrate() {
 		error->one(FLERR, "fix smd/integrate_ulsph failed to accesss velocityGradient array");
 	}
 
-	double *d_iso_difference = (double *) force->pair->extract("smd/ulsph/d_iso_difference_ptr", itmp);
-	if (d_iso_difference == NULL) {
-		error->one(FLERR, "fix smd/integrate_ulsph failed to accesss d_iso_difference array");
-	}
-
 	for (int i = 0; i < nlocal; i++) {
 		if (mask[i] & groupbit) {
 
@@ -314,12 +309,6 @@ void FixSMDIntegrateUlsph::final_integrate() {
 			D = 0.5 * (L[i] + L[i].transpose());
 			vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
 			vfrac[i] += vol_increment;
-
-//			if (update->ntimestep % 30 == 0) {
-//				if (d_iso_difference[i] != 0.0) {
-//					vfrac[i] = d_iso_difference[i];
-//				}
-//			}
 
 			rho[i] = rmass[i] / vfrac[i];
 

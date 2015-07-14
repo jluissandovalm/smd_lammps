@@ -63,11 +63,14 @@ using namespace Eigen;
 PairULSPH::PairULSPH(LAMMPS *lmp) :
 		Pair(lmp) {
 
+	// per-type arrays
 	Q1 = NULL;
 	eos = viscosity = strength = NULL;
 	c0_type = NULL;
 	c0 = NULL;
 	Lookup = NULL;
+	artificial_stress = NULL;
+	artificial_pressure = NULL;
 
 	nmax = 0; // make sure no atom on this proc such that initial memory allocation is correct
 	stressTensor = L = K = NULL;
@@ -77,13 +80,9 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	F = NULL;
 	rho = NULL;
 	effm = NULL;
-	artificial_pressure = NULL;
 
-	artificial_stress_flag = false; // turn off artificial stress correction by default
 	velocity_gradient_required = false; // turn off computation of velocity gradient by default
 	density_summation = velocity_gradient = false;
-
-	d_iso_difference = NULL;
 
 	comm_forward = 18; // this pair style communicates 18 doubles to ghost atoms
 	updateFlag = 0;
@@ -102,6 +101,7 @@ PairULSPH::~PairULSPH() {
 		memory->destroy(c0_type);
 		memory->destroy(Lookup);
 		memory->destroy(artificial_pressure);
+		memory->destroy(artificial_stress);
 
 		delete[] onerad_dynamic;
 		delete[] onerad_frozen;
@@ -118,7 +118,6 @@ PairULSPH::~PairULSPH() {
 		delete[] F;
 		delete[] rho;
 		delete[] effm;
-		delete[] d_iso_difference;
 
 	}
 }
@@ -288,17 +287,13 @@ void PairULSPH::PreCompute() {
 	for (i = 0; i < nlocal; i++) {
 		itype = type[i];
 		if (setflag[itype][itype]) {
-
 			if (gradient_correction_flag) {
 				K[i].setZero();
 			} else {
 				K[i].setIdentity();
 			}
-
 			L[i].setZero();
 			F[i].setZero();
-
-			d_iso_difference[i] = 0.0;
 		}
 	}
 
@@ -334,8 +329,6 @@ void PairULSPH::PreCompute() {
 			}
 
 			dx = xj - xi;
-//			if (periodic)
-//				domain->minimum_image(dx(0), dx(1), dx(2)); // we need this periodic check because j can be non-ghosted
 
 			rSq = dx.squaredNorm();
 			h = irad + radius[j];
@@ -350,7 +343,6 @@ void PairULSPH::PreCompute() {
 				dx0 = x0j - x0i;
 
 				// kernel and derivative
-				//kernel_and_derivative(h, r, wf, wfd);
 				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 
 				// uncorrected kernel gradient
@@ -446,7 +438,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Matrix3d S, D, V, eye;
 	eye.setIdentity();
 	int k;
-	SelfAdjointEigenSolver < Matrix3d > es;
+	SelfAdjointEigenSolver<Matrix3d> es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -476,8 +468,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 		rho = new double[nmax];
 		delete[] effm;
 		effm = new double[nmax];
-		delete[] d_iso_difference;
-		d_iso_difference = new double[nmax];
 	}
 
 // zero accumulators
@@ -489,7 +479,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 		h = 2.0 * radius[i];
 		r = 0.0;
 		spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
-		d_iso_difference[i] = wf * vfrac[i] * vfrac[i];
 	}
 
 	/*
@@ -580,8 +569,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 			xj(2) = x[j][2];
 
 			dx = xj - xi;
-//			if (periodic)
-//				domain->minimum_image(dx(0), dx(1), dx(2)); // we need this periodic check because j can be non-ghosted
 			rSq = dx.squaredNorm();
 			h = radius[i] + radius[j];
 			if (rSq < h * h) {
@@ -601,7 +588,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 				dvint = vintj - vinti;
 
 				// kernel and derivative
-				//kernel_and_derivative(h, r, wf, wfd);
 				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 
 				// uncorrected kernel gradient
@@ -611,13 +597,13 @@ void PairULSPH::compute(int eflag, int vflag) {
 
 				S = stressTensor[i] + stressTensor[j];
 
-				if (artificial_pressure[itype][jtype]) {
+				if (artificial_pressure[itype][jtype] > 0.0) {
 					p = S.trace();
 					if (p > 0.0) { // we are in tension
 						r_ref = contact_radius[i] + contact_radius[j];
 						weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(r_ref, h);
 						weight = pow(weight, 4.0);
-						S -= 0.3 * weight * p * eye;
+						S -= artificial_pressure[itype][jtype] * weight * p * eye;
 					}
 				}
 
@@ -625,21 +611,23 @@ void PairULSPH::compute(int eflag, int vflag) {
 				 * artificial stress to control tensile instability
 				 * Only works if particles are uniformly spaced initially.
 				 */
-//				if (true) { //(artificial_stress_flag == true) {
-//					ini_dist = contact_radius[i] + contact_radius[j];
-//					weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(ini_dist, h);
-//					weight = pow(weight, 4.0);
-//
-//					es.compute(S);
-//					D = es.eigenvalues().asDiagonal();
-//					for (k = 0; k < 3; k++) {
-//						if (D(k, k) > 0.0) {
-//							D(k, k) -= weight * 0.1 * D(k, k);
-//						}
-//					}
-//					V = es.eigenvectors();
-//					S = V * D * V.inverse();
-//				}
+				if (artificial_stress[itype][jtype] > 0.0) {
+					ini_dist = contact_radius[i] + contact_radius[j];
+					weight = Kernel_Cubic_Spline(r, h) / Kernel_Cubic_Spline(ini_dist, h);
+					weight = pow(weight, 4.0);
+
+					es.compute(S);
+					D = es.eigenvalues().asDiagonal();
+					for (k = 0; k < 3; k++) {
+						if (D(k, k) > 0.0) {
+							D(k, k) -= weight * artificial_stress[itype][jtype] * D(k, k);
+						}
+					}
+					V = es.eigenvectors();
+					S = V * D * V.inverse();
+				}
+
+				// compute forces
 				f_stress = -ivol * jvol * S * g; // DO NOT TOUCH SIGN
 
 				/*
@@ -677,7 +665,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 				shepardWeight[i] += jvol * wf;
 				smoothVel[i] += jvol * wf * dvint;
 				numNeighs[i] += 1;
-				d_iso_difference[i] += jvol * wf * jvol;
 
 				if (j < nlocal) {
 					f[j][0] -= sumForces(0);
@@ -688,18 +675,12 @@ void PairULSPH::compute(int eflag, int vflag) {
 					shepardWeight[j] += ivol * wf;
 					smoothVel[j] -= ivol * wf * dvint;
 					numNeighs[j] += 1;
-					d_iso_difference[j] += ivol * wf * ivol;
 				}
 
 				// tally atomistic stress tensor
 				if (evflag) {
 					ev_tally_xyz(i, j, nlocal, 0, 0.0, 0.0, sumForces(0), sumForces(1), sumForces(2), dx(0), dx(1), dx(2));
 				}
-
-				// check if a particle  has moved too much w.r.t another particle ... deactivated for now.
-				//if (du.norm() > 10.5 * dx0.norm()) {
-				//	updateFlag = 1;
-				//}
 			}
 
 		}
@@ -710,11 +691,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 		if (setflag[itype][itype] == 1) {
 			if (shepardWeight[i] != 0.0) {
 				smoothVel[i] /= shepardWeight[i];
-				d_iso_difference[i] /= shepardWeight[i];
-				//printf("abs=%f, diff = %f\n", L[i].trace(), d_iso_difference[i] );
 			} else {
 				smoothVel[i].setZero();
-				d_iso_difference[i] = 0.0;
 			}
 		} // end check if particle is SPH-type
 	} // end loop over i = 0 to nlocal
@@ -859,17 +837,6 @@ void PairULSPH::AssembleStressTensor() {
 			} // end if (strength[itype] != NONE)
 
 			if (viscosity[itype] != NONE) {
-
-				oldStressDeviator(0, 0) = tlsph_stress[i][0];
-				oldStressDeviator(0, 1) = tlsph_stress[i][1];
-				oldStressDeviator(0, 2) = tlsph_stress[i][2];
-				oldStressDeviator(1, 1) = tlsph_stress[i][3];
-				oldStressDeviator(1, 2) = tlsph_stress[i][4];
-				oldStressDeviator(2, 2) = tlsph_stress[i][5];
-				oldStressDeviator(1, 0) = oldStressDeviator(0, 1);
-				oldStressDeviator(2, 0) = oldStressDeviator(0, 2);
-				oldStressDeviator(2, 1) = oldStressDeviator(1, 2);
-
 				D = 0.5 * (L[i] + L[i].transpose());
 				d_dev = Deviator(D);
 
@@ -878,27 +845,18 @@ void PairULSPH::AssembleStressTensor() {
 					error->one(FLERR, "unknown viscosity model.");
 					break;
 				case VISCOSITY_NEWTON:
-					//effectiveViscosity = Lookup[VISCOSITY_MU][itype];
-					double shear_rate = 2.0 * sqrt(d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2)); // 3d
-					effectiveViscosity = PA6_270C(shear_rate);
+					effectiveViscosity = Lookup[VISCOSITY_MU][itype];
+					double shear_rate = 2.0
+							* sqrt(d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2)); // 3d
+					//cout << "shear rate: " << shear_rate << endl;
+					//effectiveViscosity = PA6_270C(shear_rate);
 					//if (effectiveViscosity > 178.062e-6) {
 					//	printf("effective visc is %f\n", effectiveViscosity);
 					//}
 					newStressDeviator = 2.0 * effectiveViscosity * d_dev; // newton original
+					//cout << "this is Ddev " << endl << d_dev << endl << endl;
 					break;
 				}
-
-				tlsph_stress[i][0] = newStressDeviator(0, 0);
-				tlsph_stress[i][1] = newStressDeviator(0, 1);
-				tlsph_stress[i][2] = newStressDeviator(0, 2);
-				tlsph_stress[i][3] = newStressDeviator(1, 1);
-				tlsph_stress[i][4] = newStressDeviator(1, 2);
-				tlsph_stress[i][5] = newStressDeviator(2, 2);
-
-				// estimate effective shear modulus for time step stability
-				deltaStressDev = oldStressDeviator - newStressDeviator;
-				G_eff = effective_shear_modulus(d_dev, deltaStressDev, dt, itype);
-
 			} // end if (viscosity[itype] != NONE)
 
 			/*
@@ -926,7 +884,7 @@ void PairULSPH::AssembleStressTensor() {
 			/*
 			 * stable timestep based on viscosity
 			 */
-			//dtCFL = MIN(4 * radius[i] * radius[i] * rho / effectiveViscosity, dtCFL);
+			dtCFL = MIN(4 * radius[i] * radius[i] * rho / effectiveViscosity, dtCFL);
 		}
 		// end if (setflag[itype][itype] == 1)
 	} // end loop over nlocal
@@ -954,7 +912,8 @@ void PairULSPH::allocate() {
 
 	memory->create(Lookup, MAX_KEY_VALUE, n + 1, "pair:LookupTable");
 
-	memory->create(artificial_pressure, n + 1, n + 1, "pair:artificial_pressue");
+	memory->create(artificial_pressure, n + 1, n + 1, "pair:artificial_pressure");
+	memory->create(artificial_stress, n + 1, n + 1, "pair:artificial_stress");
 	memory->create(cutsq, n + 1, n + 1, "pair:cutsq");		// always needs to be allocated, even with granular neighborlist
 
 	/*
@@ -963,7 +922,8 @@ void PairULSPH::allocate() {
 
 	for (int i = 1; i <= n; i++) {
 		for (int j = i; j <= n; j++) {
-			artificial_pressure[i][j] = false;
+			artificial_pressure[i][j] = 0.0;
+			artificial_stress[i][j] = 0.0;
 			setflag[i][j] = 0;
 		}
 	}
@@ -1256,7 +1216,6 @@ void PairULSPH::coeff(int narg, char **arg) {
 				 */
 
 				strength[itype] = STRENGTH_LINEAR_PLASTIC;
-				artificial_stress_flag = true;
 				velocity_gradient_required = true;
 				//printf("reading *LINEAR_PLASTIC\n");
 
@@ -1389,17 +1348,52 @@ void PairULSPH::coeff(int narg, char **arg) {
 					error->all(FLERR, str);
 				}
 
-				if (iNextKwd - ioffset != 0 + 1) {
-					sprintf(str, "expected 0 arguments following *ARTIFICIAL_PRESSURE but got %d\n", iNextKwd - ioffset - 1);
+				if (iNextKwd - ioffset != 1 + 1) {
+					sprintf(str, "expected 1 arguments following *ARTIFICIAL_PRESSURE but got %d\n", iNextKwd - ioffset - 1);
 					error->all(FLERR, str);
 				}
 
-				artificial_pressure[itype][itype] = true;
+				artificial_pressure[itype][itype] = force->numeric(FLERR, arg[ioffset + 1]);
 
 				if (comm->me == 0) {
 					printf(FORMAT2, "Artificial Pressure is enabled.");
+					printf(FORMAT1, "Artificial Pressure amplitude", artificial_pressure[itype][itype]);
 				}
 			} // end *ARTIFICIAL_PRESSURE
+
+			else if (strcmp(arg[ioffset], "*ARTIFICIAL_STRESS") == 0) {
+
+				/*
+				 * use Monaghan's artificial stress to prevent particle clumping
+				 */
+
+				t = string("*");
+				iNextKwd = -1;
+				for (iarg = ioffset + 1; iarg < narg; iarg++) {
+					s = string(arg[iarg]);
+					if (s.compare(0, t.length(), t) == 0) {
+						iNextKwd = iarg;
+						break;
+					}
+				}
+
+				if (iNextKwd < 0) {
+					sprintf(str, "no *KEYWORD terminates *ARTIFICIAL_STRESS");
+					error->all(FLERR, str);
+				}
+
+				if (iNextKwd - ioffset != 1 + 1) {
+					sprintf(str, "expected 1 arguments following *ARTIFICIAL_STRESS but got %d\n", iNextKwd - ioffset - 1);
+					error->all(FLERR, str);
+				}
+
+				artificial_stress[itype][itype] = force->numeric(FLERR, arg[ioffset + 1]);
+
+				if (comm->me == 0) {
+					printf(FORMAT2, "Artificial Stress is enabled.");
+					printf(FORMAT1, "Artificial Stress amplitude", artificial_stress[itype][itype]);
+				}
+			} // end *ARTIFICIAL_STRESS
 
 			else {
 				sprintf(str, "unknown *KEYWORD: %s", arg[ioffset]);
@@ -1461,9 +1455,18 @@ void PairULSPH::coeff(int narg, char **arg) {
 		setflag[itype][jtype] = 1;
 		setflag[jtype][itype] = 1;
 
-		if ((artificial_pressure[itype][itype]) && (artificial_pressure[jtype][jtype])) {
-			artificial_pressure[itype][jtype] = true;
-			artificial_pressure[jtype][itype] = true;
+		if ((artificial_pressure[itype][itype] > 0.0) && (artificial_pressure[jtype][jtype] > 0.0)) {
+			artificial_pressure[itype][jtype] = 0.5 * (artificial_pressure[itype][itype] + artificial_pressure[jtype][jtype]);
+			artificial_pressure[jtype][itype] = artificial_pressure[itype][jtype];
+		} else {
+			artificial_pressure[itype][jtype] = artificial_pressure[jtype][itype] = 0.0;
+		}
+
+		if ((artificial_stress[itype][itype] > 0.0) && (artificial_stress[jtype][jtype] > 0.0)) {
+			artificial_stress[itype][jtype] = 0.5 * (artificial_stress[itype][itype] + artificial_stress[jtype][jtype]);
+			artificial_stress[jtype][itype] = artificial_stress[itype][jtype];
+		} else {
+			artificial_stress[itype][jtype] = artificial_stress[jtype][itype] = 0.0;
 		}
 
 		if (comm->me == 0) {
@@ -1642,8 +1645,6 @@ void *PairULSPH::extract(const char *str, int &i) {
 		return (void *) &updateFlag;
 	} else if (strcmp(str, "smd/ulsph/effective_modulus_ptr") == 0) {
 		return (void *) effm;
-	} else if (strcmp(str, "smd/ulsph/d_iso_difference_ptr") == 0) {
-		return (void *) d_iso_difference;
 	}
 
 	return NULL;

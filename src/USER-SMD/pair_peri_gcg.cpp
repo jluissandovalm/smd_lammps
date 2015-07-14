@@ -46,6 +46,8 @@
 #include "error.h"
 
 using namespace LAMMPS_NS;
+#define FORMAT1 "%60s : %g\n"
+#define FORMAT2 "\n.............................. %s \n"
 
 /* ---------------------------------------------------------------------- */
 
@@ -61,6 +63,8 @@ PairPeriGCG::PairPeriGCG(LAMMPS *lmp) :
 	smax = syield = NULL;
 	G0 = NULL;
 	alpha = NULL;
+	rho0 = NULL;
+	c0 = NULL;
 
 	cutoff_global = 0.0;
 
@@ -80,6 +84,8 @@ PairPeriGCG::~PairPeriGCG() {
 		memory->destroy(syield);
 		memory->destroy(G0);
 		memory->destroy(alpha);
+		memory->destroy(rho0);
+		memory->destroy(c0);
 		memory->destroy(cutsq);
 	}
 }
@@ -89,10 +95,10 @@ PairPeriGCG::~PairPeriGCG() {
 void PairPeriGCG::compute(int eflag, int vflag) {
 	int i, j, ii, jj, inum, jnum, itype, jtype;
 	double xtmp, ytmp, ztmp, delx, dely, delz;
-	double rsq, r, dr, evdwl, fpair, fbond;
+	double rsq, r, dr, evdwl, fpair;
 	int *ilist, *jlist, *numneigh, **firstneigh;
-	double delta, stretch, ivol, jvol;
-	double vxtmp, vytmp, vztmp, delvelx, delvely, delvelz, delVdotDelR, fvisc, rcut, c0;
+	double delta, stretch;
+	double vxtmp, vytmp, vztmp, delvelx, delvely, delvelz, rcut, strain_rate;
 	double c;
 	double r0cut, delx0, dely0, delz0;
 	double r_geom, radius_factor;
@@ -101,7 +107,6 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	double **x = atom->x;
 	double **x0 = atom->x0;
 	int *type = atom->type;
-	double *rmass = atom->rmass;
 	double *e = atom->e;
 	double **v = atom->v;
 	double *vfrac = atom->vfrac;
@@ -115,7 +120,6 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	tagint **partner = ((FixPeriNeighGCG *) modify->fix[ifix_peri])->partner;
 	int *npartner = ((FixPeriNeighGCG *) modify->fix[ifix_peri])->npartner;
 	double *vinter = ((FixPeriNeighGCG *) modify->fix[ifix_peri])->vinter;
-	tagint *tag = atom->tag;
 
 	evdwl = 0.0;
 	if (eflag || vflag)
@@ -142,7 +146,6 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 			vytmp = v[i][1];
 			vztmp = v[i][2];
 			itype = type[i];
-			ivol = vfrac[i];
 			jlist = firstneigh[i];
 			jnum = numneigh[i];
 
@@ -194,18 +197,6 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 					if (evflag) {
 						ev_tally(i, j, nlocal, newton_pair, evdwl, 0.0, fpair, delx, dely, delz);
 					}
-
-					// artificial viscosity -- alpha is dimensionless
-					delvelx = vxtmp - v[j][0];
-					delvely = vytmp - v[j][1];
-					delvelz = vztmp - v[j][2];
-					delVdotDelR = delx * delvelx + dely * delvely + delz * delvelz;
-
-					jvol = vfrac[j];
-					c0 = sqrt(bulkmodulus[itype][jtype] / (0.5 * (rmass[i] / ivol + rmass[j] / jvol))); // soundspeed
-					fvisc = -alpha[itype][jtype] * c0 * 0.5 * (rmass[i] + rmass[j]) * delVdotDelR / (rsq * r);
-
-					fpair = fpair + fvisc;
 
 					f[i][0] += delx * fpair;
 					f[i][1] += dely * fpair;
@@ -281,48 +272,42 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 			// bond stretch
 			stretch = dr / r0[i][jj]; // total stretch
 
-//				// subtract plastic stretch from current stretch
-//				stretch -= plastic_stretch[i][jj];
-//
-//				// alternative plasticity based on plastic stretch
-//				if (stretch > syield[itype][jtype]) {
-//					double plastic_stretch_increment = stretch - syield[itype][jtype];
-//					plastic_stretch[i][jj] += plastic_stretch_increment;
-//					stretch = syield[itype][jtype];
-//				}
+			// subtract plastic stretch from current stretch
+			stretch -= plastic_stretch[i][jj];
+
+			// alternative plasticity based on plastic stretch
+			if (stretch > syield[itype][jtype]) {
+				double plastic_stretch_increment = stretch - syield[itype][jtype];
+				plastic_stretch[i][jj] += plastic_stretch_increment;
+				stretch = syield[itype][jtype];
+				//printf("yielding \n");
+			}
 
 			if (domain->dimension == 2) {
 				c = 4.5 * bulkmodulus[itype][jtype] * (1.0 / vinter[i] + 1.0 / vinter[j]);
 			} else {
 				c = 9.0 * bulkmodulus[itype][jtype] * (1.0 / vinter[i] + 1.0 / vinter[j]);
-				//c = 9.0 * bulkmodulus[itype][jtype] * (1.0 / 20000.0 + 1.0 / 20000.0);
 			}
-
-			// use integration approach
-			//c = 2.865 * bulkmodulus[itype][jtype] / (1.0); // applicable to delta = 2.0 * (1/2)
 
 			// force computation -- note we divide by a factor of r
 			evdwl = 0.5 * c * stretch * stretch * vfrac[i] * vfrac[j];
 			//printf("evdwl = %f\n", evdwl);
-			fbond = -c * vfrac[i] * vfrac[j] * stretch / r0[i][jj];
-			if (r > 0.0)
-				fbond = fbond / r;
-			else
-				fbond = 0.0;
+			fpair = -c * vfrac[i] * vfrac[j] * stretch / r0[i][jj];
 
-			// artificial viscosity -- alpha is dimensionless
-			delvelx = vxtmp - v[j][0];
-			delvely = vytmp - v[j][1];
-			delvelz = vztmp - v[j][2];
-			delVdotDelR = delx * delvelx + dely * delvely + delz * delvelz;
-
-			jvol = vfrac[j];
-//			c0 = sqrt(bulkmodulus[itype][jtype] / (0.5 * (rmass[i] / ivol + rmass[j] / jvol))); // soundspeed
-//			fvisc = -alpha[itype][jtype] * c0 * 0.5 * (rmass[i] + rmass[j]) * delVdotDelR / (rsq * r);
-
-			fpair = fbond; // + fvisc;
+			// artificial viscosity
+			if (alpha[itype][jtype] > 0.0) {
+				delvelx = vxtmp - v[j][0];
+				delvely = vytmp - v[j][1];
+				delvelz = vztmp - v[j][2];
+				strain_rate = (delx * delvelx + dely * delvely + delz * delvelz) / (r * r0[i][jj]); // pair-wise strain rate
+				fpair -= rho0[itype][jtype] * alpha[itype][jtype] * c0[itype][jtype] * strain_rate;
+			}
 
 			// project force -- missing factor of r is recovered here as delx, dely ... are not unit vectors
+			if (r > 0.0)
+				fpair = fpair / r;
+			else
+				fpair = 0.0;
 			f[i][0] += delx * fpair;
 			f[i][1] += dely * fpair;
 			f[i][2] += delz * fpair;
@@ -333,47 +318,12 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 				//printf("broken evdwl=%f, norm = %f %f\n", evdwl, vinter[i], vinter[j]);
 			}
 
-			// bond-based plasticity
-
-//			if (smax[itype][jtype] > 0.0) { // maximum-stretch based failure
 			if ((r - r0[i][jj]) / r0[i][jj] > smax[itype][jtype]) {
 				partner[i][jj] = 0;
 				nBroken += 1;
 				e[i] += 0.5 * evdwl;
-
-//					printf("nlocal=%d, i=%d, j=%d\n", nlocal, i, j);
-////
-//					printf("broken evdwl=%f, k=%f, v=%f %f, norm = %f %f, s=%f, r0=%f, r=%f\n", evdwl, bulkmodulus[itype][jtype],
-//							vfrac[i], vfrac[j], vinter[i], vinter[j], stretch, r0[i][jj], r);
-//				printf("velocity i: %f %f %f \n", v[i][0], v[i][1], v[i][2]);
-//				printf("velocity j: %f %f %f \n", v[j][0], v[j][1], v[j][2]);
-//				printf("position i: %f %f %f \n", x[i][0], x[i][1], x[i][2]);
-//				printf("position j: %f %f %f \n", x[j][0], x[j][1], x[j][2]);
-//				printf("position 0 i: %f %f %f \n", x0[i][0], x0[i][1], x0[i][2]);
-//				printf("position 0 j: %f %f %f \n", x0[j][0], x0[j][1], x0[j][2]);
-//
-//					printf("itype=%d, imol=%d, jtype=%d, jmol=%d\n\n", itype, molecule[i], jtype, molecule[j]);
-//					printf("-----------------------------------------------------------------------------\n");
-				//error->one(FLERR, "STOP");
-				//<
+				printf("breaking bond\n");
 			}
-//			} else {
-//				printf("smax[%d][%d] = %f\n", itype, jtype, smax[itype][jtype]);
-//				printf("broken evdwl=%f, k=%f, v=%f %f, norm = %f %f, s=%f, r0=%f\n", evdwl, bulkmodulus[itype][jtype], vfrac[i],
-//						vfrac[j], vinter[i], vinter[j], stretch, r0[i][jj]);
-//				printf("itype=%d, imol=%d, jtype=%d, jmol=%d\n\n", itype, molecule[i], jtype, molecule[j]);
-//
-//				error->all(FLERR, "G0-bnased fracture not implemented for 3d");
-//				double this_smax = sqrt(3.0 * G0[itype][jtype] / (2.0 * c * delta * delta * delta)); // factor 2 beacuse we are creating 2 fracture surfaces
-//				//printf("G0=%g, smax=%g\n", G0[itype][jtype], this_smax);
-//				if (stretch > this_smax) {
-//					partner[i][jj] = 0;
-//					nBroken += 1;
-//					//printf("c = %g, delta=%g\n", c, delta);
-//					//printf("G0-based failure: G0=%g, smax = %g\n", G0[itype][jtype], this_smax);
-//				}
-//
-//			}
 
 		}
 
@@ -394,6 +344,8 @@ void PairPeriGCG::allocate() {
 		for (int j = i; j <= n; j++)
 			setflag[i][j] = 0;
 
+	memory->create(rho0, n + 1, n + 1, "pair:rho0");
+	memory->create(c0, n + 1, n + 1, "pair:c0");
 	memory->create(bulkmodulus, n + 1, n + 1, "pair:kspring");
 	memory->create(smax, n + 1, n + 1, "pair:smax");
 	memory->create(syield, n + 1, n + 1, "pair:syield");
@@ -417,7 +369,7 @@ void PairPeriGCG::settings(int narg, char **arg) {
  ------------------------------------------------------------------------- */
 
 void PairPeriGCG::coeff(int narg, char **arg) {
-	if (narg != 7)
+	if (narg != 8)
 		error->all(FLERR, "Incorrect args for pair coefficients");
 	if (!allocated)
 		allocate();
@@ -426,22 +378,40 @@ void PairPeriGCG::coeff(int narg, char **arg) {
 	force->bounds(arg[0], atom->ntypes, ilo, ihi);
 	force->bounds(arg[1], atom->ntypes, jlo, jhi);
 
-	double bulkmodulus_one = atof(arg[2]);
-	double smax_one = atof(arg[3]);
-	double G0_one = atof(arg[4]);
-	double alpha_one = atof(arg[5]);
-	double syield_one = atof(arg[6]);
+	double rho0_one = atof(arg[2]);
+	double bulkmodulus_one = atof(arg[3]);
+	double smax_one = atof(arg[4]);
+	double G0_one = atof(arg[5]);
+	double alpha_one = atof(arg[6]);
+	double syield_one = atof(arg[7]);
+	double c0_one = sqrt(bulkmodulus_one / rho0_one);
 
 	int count = 0;
 	for (int i = ilo; i <= ihi; i++) {
+
 		for (int j = MAX(jlo, i); j <= jhi; j++) {
+			rho0[i][j] = rho0_one;
 			bulkmodulus[i][j] = bulkmodulus_one;
 			smax[i][j] = smax_one;
 			syield[i][j] = syield_one;
 			G0[i][j] = G0_one;
 			alpha[i][j] = alpha_one;
 			setflag[i][j] = 1;
+			c0[i][j] = c0_one;
 			count++;
+		}
+
+		if (comm->me == 0) {
+			printf("\n>>========>>========>>========>>========>>========>>========>>========>>========\n");
+			printf("...BOND BASED PERIDYNAMIC PROPERTIES OF PARTICLE TYPE %d\n\n", i);
+			printf(FORMAT1, "reference density", rho0[i][i]);
+			printf(FORMAT1, "reference speed of sound", c0[i][i]);
+			printf(FORMAT1, "bulk modulus", bulkmodulus[i][i]);
+			printf(FORMAT1, "yield stretch", syield[i][i]);
+			printf(FORMAT1, "failure stretch", smax[i][i]);
+			printf(FORMAT1, "energy release rate (negative if deactivated)", G0[i][i]);
+			printf(FORMAT1, "linear artificial viscosity coefficient", alpha[i][i]);
+			printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
 		}
 	}
 
@@ -476,7 +446,6 @@ double PairPeriGCG::init_one(int i, int j) {
 
 void PairPeriGCG::init_style() {
 	int i;
-	double hurz;
 
 // error checks
 
@@ -521,8 +490,6 @@ void PairPeriGCG::init_style() {
 	//printf("proc %d has maxrad %f\n", comm->me, maxrad_one);
 
 	MPI_Allreduce(&maxrad_one, &cutoff_global, atom->ntypes, MPI_DOUBLE, MPI_MAX, world);
-
-
 
 	if (comm->me == 0) {
 		printf("global cutoff for pair style peri/gcg is %f\n", cutoff_global);
