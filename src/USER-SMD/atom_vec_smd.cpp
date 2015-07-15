@@ -49,7 +49,7 @@ AtomVecSMD::AtomVecSMD(LAMMPS *lmp) :
 	molecular = 0;
 
 	comm_x_only = 0;
-	comm_f_only = 1;
+	comm_f_only = 0;
 	size_forward = 7; // variables that are changed by time integration
 	size_reverse = 4; // f[3] + de
 	size_border = 32;

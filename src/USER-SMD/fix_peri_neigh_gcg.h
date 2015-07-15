@@ -25,8 +25,8 @@ FixStyle(PERI_NEIGH_GCG,FixPeriNeighGCG)
 namespace LAMMPS_NS {
 
 class FixPeriNeighGCG: public Fix {
+	friend class Neighbor;
 	friend class PairPeriGCG;
-	friend class PairPeriDefgrad;
 	friend class ComputePDGCGDamage;
 
 public:
@@ -34,7 +34,6 @@ public:
 	virtual ~FixPeriNeighGCG();
 	int setmask();
 	void init();
-	void init_list(int, class NeighList *);
 	void setup(int);
 	void min_setup(int);
 
@@ -49,10 +48,10 @@ public:
 	void unpack_restart(int, int);
 	int size_restart(int);
 	int maxsize_restart();
-	int pack_forward_comm(int, int *, double *, int, int *);
-	void unpack_forward_comm(int, int, double *);
 	int pack_border(int, int *, double *);
 	int unpack_border(int, int, double *);
+	int pack_forward_comm(int, int *, double *, int, int *);
+	void unpack_forward_comm(int, int, double *);
 
 protected:
 	int nmax;
@@ -64,7 +63,7 @@ protected:
 	double **plastic_stretch;               // rest length of spring due to plasticity
 	double *vinter;            // sum of vfrac for bonded neighbors
 
-	class NeighList *list;
+	class Pair *pair;
 };
 
 }

@@ -30,7 +30,7 @@
 #include "float.h"
 #include "stdlib.h"
 #include "string.h"
-#include "pair_peri_gcg.h"
+#include "pair_smd_peri_ipmb.h"
 #include "atom.h"
 #include "domain.h"
 #include "force.h"
@@ -49,6 +49,12 @@ using namespace LAMMPS_NS;
 #define FORMAT1 "%60s : %g\n"
 #define FORMAT2 "\n.............................. %s \n"
 
+#if defined(__clang__) || defined (__GNUC__)
+# define ATTRIBUTE_NO_SANITIZE_ADDRESS __attribute__((no_sanitize_address))
+#else
+# define ATTRIBUTE_NO_SANITIZE_ADDRESS
+#endif
+
 /* ---------------------------------------------------------------------- */
 
 PairPeriGCG::PairPeriGCG(LAMMPS *lmp) :
@@ -65,10 +71,13 @@ PairPeriGCG::PairPeriGCG(LAMMPS *lmp) :
 	alpha = NULL;
 	rho0 = NULL;
 	c0 = NULL;
-
+	contact_forces = NULL;
+	HAVE_CONTACT_FORCES_GLOBAL = false;
 	cutoff_global = 0.0;
 
 	nBroken = 0;
+
+	first = true;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -86,6 +95,7 @@ PairPeriGCG::~PairPeriGCG() {
 		memory->destroy(alpha);
 		memory->destroy(rho0);
 		memory->destroy(c0);
+		memory->destroy(contact_forces);
 		memory->destroy(cutsq);
 	}
 }
@@ -101,7 +111,7 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	double vxtmp, vytmp, vztmp, delvelx, delvely, delvelz, rcut, strain_rate;
 	double c;
 	double r0cut, delx0, dely0, delz0;
-	double r_geom, radius_factor;
+	double r_geom, radius_factor, dforce_dr, k, dt_crit;
 	// ---------------------------------------------------------------------------------
 	double **f = atom->f;
 	double **x = atom->x;
@@ -112,6 +122,7 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	double *vfrac = atom->vfrac;
 	double *radius = atom->radius;
 	double *radiusSR = atom->contact_radius;
+	double *rmass = atom->rmass;
 	int *molecule = atom->molecule;
 	int nlocal = atom->nlocal;
 	int newton_pair = force->newton_pair;
@@ -127,6 +138,13 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	else
 		evflag = vflag_fdotr = 0;
 
+	if (first) { // return on first call, because reference connectivity lists still needs to be built. Also zero quantities which are otherwise undefined.
+		first = false;
+		return;
+	}
+
+	stable_time_increment = 1.0e22;
+
 	/* ----------------------- PERIDYNAMIC SHORT RANGE FORCES --------------------- */
 
 	// neighbor list variables -- note that we use a granular neighbor list
@@ -135,7 +153,7 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	numneigh = list->numneigh;
 	firstneigh = list->firstneigh;
 
-	if (false) {
+	if (HAVE_CONTACT_FORCES_GLOBAL) {
 
 		for (ii = 0; ii < inum; ii++) {
 			i = ilist[ii];
@@ -154,6 +172,11 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 				j &= NEIGHMASK;
 
 				jtype = type[j];
+
+				if (!contact_forces[itype][jtype]) {
+					continue;
+				}
+
 				delx = xtmp - x[j][0];
 				dely = ytmp - x[j][1];
 				delz = ztmp - x[j][2];
@@ -176,7 +199,7 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 				r0cut = sqrt(delx0 * delx0 + dely0 * dely0 + delz0 * delz0);
 
 				rcut = radius_factor * (radiusSR[i] + radiusSR[j]);
-				//rcut = MIN(rcut, r0cut);
+				rcut = MIN(rcut, r0cut);
 
 				if (rsq < rcut * rcut) {
 
@@ -184,25 +207,33 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 					r = sqrt(rsq);
 					delta = rcut - r; // overlap distance
 					r_geom = radius_factor * radius_factor * radiusSR[i] * radiusSR[j] / rcut;
-					if (domain->dimension == 3) {
-						//assuming poisson ratio = 1/4 for 3d
-						fpair = 1.066666667e0 * bulkmodulus[itype][jtype] * delta * sqrt(delta * r_geom) / r;
-						evdwl = r * fpair * 0.4e0 * delta; // GCG 25 April: this expression conserves total energy
-					} else {
-						//assuming poisson ratio = 1/3 for 2d -- one factor of delta missing compared to 3d
-						fpair = 0.16790413e0 * bulkmodulus[itype][jtype] * sqrt(delta * r_geom) / r;
-						evdwl = r * fpair * 0.6666666666667e0 * delta;
-					}
+
+					//assuming poisson ratio = 1/4 for 3d
+					fpair = 1.066666667e0 * bulkmodulus[itype][jtype] * delta * sqrt(delta * r_geom);
+					evdwl = fpair * 0.4e0 * delta; // GCG 25 April: this expression conserves total energy
+
+					// compute stable time increment
+					dforce_dr = 1.5 * fpair / delta; // derivative of force w.r.t r
+					k = 2.0 * dforce_dr / (rmass[i] + rmass[j]);
+					dt_crit = 4.0 / sqrt(k);
+					//printf("dt_crit is %f, df_dr=%f\n", dt_crit, dforce_dr);
+					stable_time_increment = MIN(stable_time_increment, dt_crit);
 
 					if (evflag) {
 						ev_tally(i, j, nlocal, newton_pair, evdwl, 0.0, fpair, delx, dely, delz);
+					}
+
+					if (r > 0.0) {
+						fpair = fpair / r; // divide by r so we can multiple with the non-normalized distance vector
+					} else {
+						fpair = 0.0;
 					}
 
 					f[i][0] += delx * fpair;
 					f[i][1] += dely * fpair;
 					f[i][2] += delz * fpair;
 
-					if (newton_pair || j < nlocal) {
+					if (j < nlocal) {
 						f[j][0] -= delx * fpair;
 						f[j][1] -= dely * fpair;
 						f[j][2] -= delz * fpair;
@@ -214,8 +245,7 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 	}
 
 	/* ----------------------- PERIDYNAMIC BOND FORCES --------------------- */
-
-	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
+	stable_time_increment = 9999999999.0;
 
 	for (i = 0; i < nlocal; i++) {
 
@@ -246,18 +276,9 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 				error->all(FLERR, "molecule[i] != molecule[j]");
 			}
 
-			// initial distance in reference config
-			delx0 = x0[j][0] - x0[i][0];
-			dely0 = x0[j][1] - x0[i][1];
-			delz0 = x0[j][2] - x0[i][2];
-			double this_r0 = sqrt(delx0 * delx0 + dely0 * dely0 + delz0 * delz0);
-
 			delx = xtmp - x[j][0];
 			dely = ytmp - x[j][1];
 			delz = ztmp - x[j][2];
-
-			if (periodic)
-				domain->minimum_image(delx, dely, delz); // we need this periodic check because j can be non-ghosted
 
 			rsq = delx * delx + dely * dely + delz * delz;
 			jtype = type[j];
@@ -280,7 +301,6 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 				double plastic_stretch_increment = stretch - syield[itype][jtype];
 				plastic_stretch[i][jj] += plastic_stretch_increment;
 				stretch = syield[itype][jtype];
-				//printf("yielding \n");
 			}
 
 			if (domain->dimension == 2) {
@@ -291,8 +311,16 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 
 			// force computation -- note we divide by a factor of r
 			evdwl = 0.5 * c * stretch * stretch * vfrac[i] * vfrac[j];
-			//printf("evdwl = %f\n", evdwl);
 			fpair = -c * vfrac[i] * vfrac[j] * stretch / r0[i][jj];
+
+			dforce_dr = c * vfrac[i] * vfrac[j] / r0[i][jj];
+			k = 2.0 * dforce_dr / (rmass[i] + rmass[j]);
+			dt_crit = 4.0 / sqrt(k);
+			if (k < 0.0) {
+				error->one(FLERR, "k is negative");
+			}
+			//printf("dt_crit is %f, df_dr=%f\n", dt_crit, dforce_dr);
+			stable_time_increment = MIN(stable_time_increment, dt_crit);
 
 			// artificial viscosity
 			if (alpha[itype][jtype] > 0.0) {
@@ -322,12 +350,14 @@ void PairPeriGCG::compute(int eflag, int vflag) {
 				partner[i][jj] = 0;
 				nBroken += 1;
 				e[i] += 0.5 * evdwl;
-				printf("breaking bond\n");
+				//printf("breaking bond\n");
 			}
 
 		}
 
 	}
+
+	//printf("dtmin in pair is is %f, nlocal is %d\n", stable_time_increment, nlocal);
 
 }
 
@@ -351,6 +381,7 @@ void PairPeriGCG::allocate() {
 	memory->create(syield, n + 1, n + 1, "pair:syield");
 	memory->create(G0, n + 1, n + 1, "pair:G0");
 	memory->create(alpha, n + 1, n + 1, "pair:alpha");
+	memory->create(contact_forces, n + 1, n + 1, "pair:contact_forces");
 
 	memory->create(cutsq, n + 1, n + 1, "pair:cutsq"); // always needs to be allocated, even with granular neighborlist
 }
@@ -369,7 +400,7 @@ void PairPeriGCG::settings(int narg, char **arg) {
  ------------------------------------------------------------------------- */
 
 void PairPeriGCG::coeff(int narg, char **arg) {
-	if (narg != 8)
+	if (narg != 9)
 		error->all(FLERR, "Incorrect args for pair coefficients");
 	if (!allocated)
 		allocate();
@@ -385,6 +416,9 @@ void PairPeriGCG::coeff(int narg, char **arg) {
 	double alpha_one = atof(arg[6]);
 	double syield_one = atof(arg[7]);
 	double c0_one = sqrt(bulkmodulus_one / rho0_one);
+	bool contact_forces_one = force->inumeric(FLERR, arg[8]) != 0;
+	if (contact_forces_one)
+		HAVE_CONTACT_FORCES_GLOBAL = true;
 
 	int count = 0;
 	for (int i = ilo; i <= ihi; i++) {
@@ -396,8 +430,9 @@ void PairPeriGCG::coeff(int narg, char **arg) {
 			syield[i][j] = syield_one;
 			G0[i][j] = G0_one;
 			alpha[i][j] = alpha_one;
-			setflag[i][j] = 1;
+			contact_forces[i][j] = contact_forces_one;
 			c0[i][j] = c0_one;
+			setflag[i][j] = 1;
 			count++;
 		}
 
@@ -411,6 +446,7 @@ void PairPeriGCG::coeff(int narg, char **arg) {
 			printf(FORMAT1, "failure stretch", smax[i][i]);
 			printf(FORMAT1, "energy release rate (negative if deactivated)", G0[i][i]);
 			printf(FORMAT1, "linear artificial viscosity coefficient", alpha[i][i]);
+			printf("%60s : %s\n", "self contact forces", contact_forces[i][i] ? "true" : "false");
 			printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
 		}
 	}
@@ -436,6 +472,7 @@ double PairPeriGCG::init_one(int i, int j) {
 	smax[j][i] = smax[i][j];
 	syield[j][i] = syield[i][j];
 	G0[j][i] = G0[i][j];
+	contact_forces[j][i] = contact_forces[i][j];
 
 	return cutoff_global;
 }
@@ -443,7 +480,7 @@ double PairPeriGCG::init_one(int i, int j) {
 /* ----------------------------------------------------------------------
  init specific to this pair style
  ------------------------------------------------------------------------- */
-
+ATTRIBUTE_NO_SANITIZE_ADDRESS
 void PairPeriGCG::init_style() {
 	int i;
 
@@ -479,6 +516,9 @@ void PairPeriGCG::init_style() {
 	neighbor->requests[irequest]->half = 0;
 	neighbor->requests[irequest]->gran = 1;
 
+	fix_peri_neigh_gcg = (FixPeriNeighGCG *) modify->fix[modify->nfix - 1];
+	fix_peri_neigh_gcg->pair = this;
+
 	double *radius = atom->radius;
 	int nlocal = atom->nlocal;
 	double maxrad_one = 0.0;
@@ -490,6 +530,7 @@ void PairPeriGCG::init_style() {
 	//printf("proc %d has maxrad %f\n", comm->me, maxrad_one);
 
 	MPI_Allreduce(&maxrad_one, &cutoff_global, atom->ntypes, MPI_DOUBLE, MPI_MAX, world);
+	cutoff_global = maxrad_one;
 
 	if (comm->me == 0) {
 		printf("global cutoff for pair style peri/gcg is %f\n", cutoff_global);
@@ -562,3 +603,16 @@ double PairPeriGCG::memory_usage() {
 	return 0.0;
 }
 
+/* ----------------------------------------------------------------------
+ extract method to access stuff computed within this pair style
+ ------------------------------------------------------------------------- */
+
+void *PairPeriGCG::extract(const char *str, int &i) {
+	//printf("in PairPeriGCG::extract\n");
+	if (strcmp(str, "smd/peri_ipmb/stable_time_increment_ptr") == 0) {
+		return (void *) &stable_time_increment;
+	}
+
+	return NULL;
+
+}

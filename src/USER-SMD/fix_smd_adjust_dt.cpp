@@ -113,8 +113,10 @@ void FixSMDTlsphDtReset::end_of_step() {
 	double *dtCFL_ULSPH = (double *) force->pair->extract("smd/ulsph/dtCFL_ptr", itmp);
 	double *dt_TRI = (double *) force->pair->extract("smd/tri_surface/stable_time_increment_ptr", itmp);
 	double *dt_HERTZ = (double *) force->pair->extract("smd/hertz/stable_time_increment_ptr", itmp);
+	double *dt_PERI_IPMB = (double *) force->pair->extract("smd/peri_ipmb/stable_time_increment_ptr", itmp);
 
-	if ((dtCFL_TLSPH == NULL) && (dtCFL_ULSPH == NULL) && (dt_TRI == NULL) && (dt_HERTZ == NULL)) {
+	if ((dtCFL_TLSPH == NULL) && (dtCFL_ULSPH == NULL) && (dt_TRI == NULL) && (dt_HERTZ == NULL)
+			&& (dt_PERI_IPMB == NULL)) {
 		error->all(FLERR, "fix smd/adjust_dt failed to access a valid dtCFL");
 	}
 
@@ -134,59 +136,61 @@ void FixSMDTlsphDtReset::end_of_step() {
 		dtmin = MIN(dtmin, *dt_HERTZ);
 	}
 
-	double **v = atom->v;
-	double **f = atom->f;
-	double *rmass = atom->rmass;
-	double *radius = atom->radius;
-	int *mask = atom->mask;
-	int nlocal = atom->nlocal;
-	double dtv, dtf, dtsq;
-	double vsq, fsq, massinv, xmax;
-	double delx, dely, delz, delr;
+	if (dt_PERI_IPMB != NULL) {
+		dtmin = MIN(dtmin, *dt_PERI_IPMB);
+	}
+
+//	double **v = atom->v;
+//	double **f = atom->f;
+//	double *rmass = atom->rmass;
+//	double *radius = atom->radius;
+//	int *mask = atom->mask;
+//	int nlocal = atom->nlocal;
+//	double dtv, dtf, dtsq;
+//	double vsq, fsq, massinv, xmax;
+//	double delx, dely, delz, delr;
 
 //	for (int i = 0; i < nlocal; i++) {
 //		if (mask[i] & groupbit) {
-////			xmax = 0.005 * radius[i];
-////			massinv = 1.0 / rmass[i];
-////			vsq = v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2];
-////			fsq = f[i][0] * f[i][0] + f[i][1] * f[i][1] + f[i][2] * f[i][2];
-////			dtv = dtf = BIG;
-////			if (vsq > 0.0)
-////				dtv = xmax / sqrt(vsq);
-////			if (fsq > 0.0)
-////				dtf = sqrt(2.0 * xmax / (sqrt(fsq) * massinv));
-////			dt = MIN(dtv, dtf);
-////			dtmin = MIN(dtmin, dt);
-////			dtsq = dt * dt;
-////			delx = dt * v[i][0] + 0.5 * dtsq * massinv * f[i][0];
-////			dely = dt * v[i][1] + 0.5 * dtsq * massinv * f[i][1];
-////			delz = dt * v[i][2] + 0.5 * dtsq * massinv * f[i][2];
-////			delr = sqrt(delx * delx + dely * dely + delz * delz);
-////			if (delr > xmax)
-////				dt *= xmax / delr;
-////			dtmin = MIN(dtmin, dt);
-//
-//			xmax = 0.05 * radius[i];
+//			xmax = 0.005 * radius[i];
 //			massinv = 1.0 / rmass[i];
+//			vsq = v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2];
 //			fsq = f[i][0] * f[i][0] + f[i][1] * f[i][1] + f[i][2] * f[i][2];
-//			dtf = BIG;
+//			dtv = dtf = BIG;
+//			if (vsq > 0.0)
+//				dtv = xmax / sqrt(vsq);
 //			if (fsq > 0.0)
 //				dtf = sqrt(2.0 * xmax / (sqrt(fsq) * massinv));
-//			dtmin = MIN(dtmin, dtf);
+//			dt = MIN(dtv, dtf);
+//			dtmin = MIN(dtmin, dt);
+//			dtsq = dt * dt;
+//			delx = dt * v[i][0] + 0.5 * dtsq * massinv * f[i][0];
+//			dely = dt * v[i][1] + 0.5 * dtsq * massinv * f[i][1];
+//			delz = dt * v[i][2] + 0.5 * dtsq * massinv * f[i][2];
+//			delr = sqrt(delx * delx + dely * dely + delz * delz);
+//			if (delr > xmax)
+//				dt *= xmax / delr;
+//			dtmin = MIN(dtmin, dt);
+//
+////			xmax = 0.05 * radius[i];
+////			massinv = 1.0 / rmass[i];
+////			fsq = f[i][0] * f[i][0] + f[i][1] * f[i][1] + f[i][2] * f[i][2];
+////			dtf = BIG;
+////			if (fsq > 0.0)
+////				dtf = sqrt(2.0 * xmax / (sqrt(fsq) * massinv));
+////			dtmin = MIN(dtmin, dtf);
 //		}
 //	}
 
 	dtmin *= safety_factor; // apply safety factor
-
 	MPI_Allreduce(&dtmin, &dt, 1, MPI_DOUBLE, MPI_MIN, world);
+
+	if (update->ntimestep == 0) {
+		dt = 1.0e-16;
+	}
 
 	//printf("dtmin is now: %f, dt is now%f\n", dtmin, dt);
 
-// if timestep didn't change, just return
-// else reset update->dt and other classes that depend on it
-
-	//if (dt == update->dt)
-	//	return;
 
 	update->dt = dt;
 	if (force->pair)

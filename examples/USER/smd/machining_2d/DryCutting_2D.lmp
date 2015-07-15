@@ -32,7 +32,7 @@
   variable        eosC5      equal   0.0000
   variable        eosC6      equal   0.0000
  
-  variable  l0                equal  0.125
+  variable  l0                equal  0.125/4
   variable  h                 equal  2.410*${l0}      # SPH kernel diameter, from mesh.data file
   variable  contact_stiffness equal  0.880*${E}       # contact force amplitude
   variable  skin              equal  1.000*${h}       # Verlet list range

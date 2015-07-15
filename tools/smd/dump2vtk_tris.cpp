@@ -60,7 +60,7 @@ void WriteVTK(std::string filename, int ntime, vtkSmartPointer<vtkUnstructuredGr
 	// create filename with the current timestep
 					std::ostringstream oss;
 					oss << ntime;
-					filename += "." + oss.str() + ".vtk";
+					filename += "_" + oss.str() + ".vtk";
 
 					writer->SetFileName(filename.c_str());
 	#if VTK_MAJOR_VERSION <= 5

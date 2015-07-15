@@ -24,7 +24,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(smd/peri_pmb,PairPeriGCG)
+PairStyle(smd/peri_ipmb,PairPeriGCG)
 
 #else
 
@@ -52,17 +52,26 @@ class PairPeriGCG : public Pair {
   void write_restart_settings(FILE *) {}
   void read_restart_settings(FILE *) {}
   virtual double memory_usage();
+  void *extract(const char *, int &);
+
 
  protected:
+  bool first;
   int ifix_peri;
   double **bulkmodulus;
   double **syield, **smax, **alpha, **G0, **c0;
   double **rho0;
   double cutoff_global;
+  double stable_time_increment;
+
+  bool **contact_forces; // have contact forces between particle pairs?
+  bool HAVE_CONTACT_FORCES_GLOBAL;
 
   void allocate();
 
   int nBroken; // number of broken bonds
+
+  class FixPeriNeighGCG *fix_peri_neigh_gcg;
 };
 
 }

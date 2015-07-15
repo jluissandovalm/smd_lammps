@@ -66,6 +66,10 @@ FixPeriNeighGCG::FixPeriNeighGCG(LAMMPS *lmp, int narg, char **arg) :
 
 	// set comm sizes needed by this fix
 
+	/*
+	 * need both pack_forward_comm / unpack_forward_comm and
+	 * pack_border / unpack_border routines for communicating Shepard volume sum to ghosts
+	 */
 	comm_forward = 1;
 	comm_border = 1;
 }
@@ -100,22 +104,8 @@ void FixPeriNeighGCG::init() {
 	if (!first)
 		return;
 
-	int irequest = neighbor->request((void *) this);
-
-	// can utilize gran neighbor list
-	neighbor->requests[irequest]->pair = 0;
-	neighbor->requests[irequest]->half = 0;
-	neighbor->requests[irequest]->gran = 1;
-	neighbor->requests[irequest]->fix = 1;
-	neighbor->requests[irequest]->full = 0;
-	neighbor->requests[irequest]->occasional = 1;
-
-}
-
-/* ---------------------------------------------------------------------- */
-
-void FixPeriNeighGCG::init_list(int id, NeighList *ptr) {
-	list = ptr;
+	if (atom->tag_enable == 0)
+		error->all(FLERR, "Pair style smd/peri_ipmb requires atoms have IDs");
 }
 
 /* ----------------------------------------------------------------------
@@ -145,20 +135,23 @@ void FixPeriNeighGCG::setup(int vflag) {
 	tagint *molecule = atom->molecule;
 	int nlocal = atom->nlocal;
 
+	NeighList *list = pair->list;
+	inum = list->inum;
+	ilist = list->ilist;
+	numneigh = list->numneigh;
+	firstneigh = list->firstneigh;
+
 	// only build list of bonds on very first run
 
 	if (!first)
 		return;
 	first = 0;
 
-	// build full neighbor list, will copy or build as necessary
-
-	neighbor->build_one(list);
-
-	inum = list->inum;
-	ilist = list->ilist;
-	numneigh = list->numneigh;
-	firstneigh = list->firstneigh;
+	for (i = 0; i < nlocal; i++) { // make sure all atoms on this proc have initially zero partners.
+		// this avoids the problem that the loop below does not include all atoms on this proc, e.g. if
+		// a hybrid/overlay pair style is used.
+		npartner[i] = 0;
+	}
 
 	// scan neighbor list to set maxpartner
 
@@ -330,7 +323,7 @@ double FixPeriNeighGCG::memory_usage() {
  ------------------------------------------------------------------------- */
 
 void FixPeriNeighGCG::grow_arrays(int nmax) {
-	printf("in FixPeriNeighGCG::grow_arrays\n");
+	//printf("in FixPeriNeighGCG::grow_arrays, nmax=%d, maxpartner=%d\n", nmax, maxpartner);
 	memory->grow(npartner, nmax, "peri_neigh:npartner");
 	memory->grow(partner, nmax, maxpartner, "peri_neigh:partner");
 	memory->grow(r0, nmax, maxpartner, "peri_neigh:r0");
@@ -358,7 +351,6 @@ void FixPeriNeighGCG::copy_arrays(int i, int j, int delflag) {
 
 int FixPeriNeighGCG::pack_border(int n, int *list, double *buf) {
 	int i, j;
-
 	//printf("FixPeriNeighGCG::pack_border\n");
 
 	int m = 0;
@@ -386,52 +378,20 @@ int FixPeriNeighGCG::unpack_border(int n, int first, double *buf) {
 	return m;
 }
 
-/* ---------------------------------------------------------------------- */
-
-int FixPeriNeighGCG::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
-	int i, j, m;
-
-	m = 0;
-	for (i = 0; i < n; i++) {
-		j = list[i];
-		buf[m++] = vinter[j];
-	}
-	return m;
-}
-
-/* ---------------------------------------------------------------------- */
-
-void FixPeriNeighGCG::unpack_forward_comm(int n, int first, double *buf) {
-	int i, m, last;
-
-	m = 0;
-	last = first + n;
-	for (i = first; i < last; i++)
-		vinter[i] = buf[m++];
-}
-
 /* ----------------------------------------------------------------------
  pack values in local atom-based arrays for exchange with another proc
  ------------------------------------------------------------------------- */
 
 int FixPeriNeighGCG::pack_exchange(int i, double *buf) {
-	// compact list by eliminating partner = 0 entries
-	// set buf[0] after compaction
-
 	//printf("in FixPeriNeighGCG::pack_exchange ------------------------------------------\n");
-	//tagint *tag = atom->tag;
 
-	int m = 1;
+	int m = 0;
+	buf[m++] = npartner[i];
 	for (int n = 0; n < npartner[i]; n++) {
-		if (partner[i][n] == 0)
-			continue;
 		buf[m++] = partner[i][n];
-		//printf("SND[%d]: atom %d with tag id %d has partner with tag id %d with r0=%f\n", comm->me, i, tag[i], partner[i][n],
-		//		r0[i][n]);
 		buf[m++] = r0[i][n];
 		buf[m++] = plastic_stretch[i][n];
 	}
-	buf[0] = m / 3;
 	buf[m++] = vinter[i];
 	return m;
 }
@@ -554,4 +514,32 @@ int FixPeriNeighGCG::maxsize_restart() {
 
 int FixPeriNeighGCG::size_restart(int nlocal) {
 	return 2 * npartner[nlocal] + 3;
+}
+
+
+/* ---------------------------------------------------------------------- */
+
+int FixPeriNeighGCG::pack_forward_comm(int n, int *list, double *buf,
+                                    int pbc_flag, int *pbc)
+{
+  int i,j,m;
+
+  m = 0;
+  for (i = 0; i < n; i++) {
+    j = list[i];
+    buf[m++] = vinter[j];
+  }
+  return m;
+}
+
+/* ---------------------------------------------------------------------- */
+
+void FixPeriNeighGCG::unpack_forward_comm(int n, int first, double *buf)
+{
+  int i,m,last;
+
+  m = 0;
+  last = first + n;
+  for (i = first; i < last; i++)
+    vinter[i] = buf[m++];
 }
