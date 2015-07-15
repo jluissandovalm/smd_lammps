@@ -44,13 +44,13 @@
 #include "smd_material_models.h"
 #include "smd_math.h"
 #include "smd_kernels.h"
-#include "smd_pa6_viscosity.h"
+//#include "smd_pa6_viscosity.h"
 
 using namespace SMD_Kernels;
 using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
-using namespace SMD_PA6_VISCOSITY;
+//using namespace SMD_PA6_VISCOSITY;
 
 #include <Eigen/SVD>
 #include <Eigen/Eigen>

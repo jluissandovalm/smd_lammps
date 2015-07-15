@@ -32,7 +32,7 @@
   variable        eosC5      equal   0.0000
   variable        eosC6      equal   0.0000
  
-  variable  l0                equal  0.125/4
+  variable  l0                equal  0.125
   variable  h                 equal  2.410*${l0}      # SPH kernel diameter, from mesh.data file
   variable  contact_stiffness equal  0.880*${E}       # contact force amplitude
   variable  skin              equal  1.000*${h}       # Verlet list range
@@ -124,14 +124,15 @@
   compute         damage          tlsph  smd/damage
   compute         nn              tlsph  smd/tlsph_num_neighs
   compute         tool_coord      tool   smd/triangle_vertices
-  compute         F               tlsph  smd/tlsph_defgrad
   compute         rho             all    smd/rho
+  compute         shape           tlsph  smd/tlsph_shape
 
 # DEFINE 'dump' FILE(S)
 # --------------------------------------------------------------------------
   dump            wpiece_dump all custom 100 wpiece.LAMMPS  id type mol   & 
                   x y z  vx vy vz  c_nn   radius   c_contact_radius      &
-                  c_S[7]   c_ps   c_damage   proc c_F[10] c_rho
+                  c_S[7]   c_ps   c_damage proc c_rho &
+                  c_shape[1] c_shape[2] c_shape[3] c_shape[4] c_shape[5] c_shape[6] c_shape[7]
   dump_modify     wpiece_dump first yes
 # --------------------------------------------------------------------------
 # dump            tool_dump   tool  custom 25   tool.LAMMPS   id type mol  &

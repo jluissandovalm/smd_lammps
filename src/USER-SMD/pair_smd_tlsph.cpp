@@ -57,7 +57,12 @@ using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
 
-#define TIME_INTEGRATE_DEFGRAD true
+/*
+ * TIME_INTEGRATE_DEFGRAD == true / rho aus detF berechnet: Spanen bei l0=0.125 funktioniert nicht: keine Kruemmung abe rnumerisch stabil.
+ * TIME_INTEGRATE_DEFGRAD == false / rho aus detF berechnet: funktioniert und sieht gut aus.
+ * TIME_INTEGRATE_DEFGRAD == false / rho in der Zeit inetgriert: numerisch instabil
+ */
+
 #define JAUMANN false
 #define DETF_MIN 0.2 // maximum compression deformation allow
 #define DETF_MAX 2.0 // maximum tension deformation allowed
@@ -146,7 +151,6 @@ void PairTlsph::PreCompute() {
 	double **v = atom->vest; // extrapolated velocities corresponding to current positions
 	double **vint = atom->v; // Velocity-Verlet algorithm velocities
 	double *damage = atom->damage;
-	double **defgrad0 = atom->smd_data_9;
 	int *tag = atom->tag;
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
@@ -270,33 +274,8 @@ void PairTlsph::PreCompute() {
 
 			pseudo_inverse_SVD(K[i]);
 			Fdot[i] *= K[i];
-
-			if (TIME_INTEGRATE_DEFGRAD) {
-			// incremental update of deformation gradient
-			F0(0, 0) = defgrad0[i][0];
-			F0(0, 1) = defgrad0[i][1];
-			F0(0, 2) = defgrad0[i][2];
-			F0(1, 0) = defgrad0[i][3];
-			F0(1, 1) = defgrad0[i][4];
-			F0(1, 2) = defgrad0[i][5];
-			F0(2, 0) = defgrad0[i][6];
-			F0(2, 1) = defgrad0[i][7];
-			F0(2, 2) = defgrad0[i][8];
-			F0 += update->dt * Fdot[i];
-			defgrad0[i][0] = F0(0, 0);
-			defgrad0[i][1] = F0(0, 1);
-			defgrad0[i][2] = F0(0, 2);
-			defgrad0[i][3] = F0(1, 0);
-			defgrad0[i][4] = F0(1, 1);
-			defgrad0[i][5] = F0(1, 2);
-			defgrad0[i][6] = F0(2, 0);
-			defgrad0[i][7] = F0(2, 1);
-			defgrad0[i][8] = F0(2, 2);
-			Fincr[i] = F0;
-			} else {
-				Fincr[i] *= K[i];
-				Fincr[i] += eye;
-			}
+			Fincr[i] *= K[i];
+			Fincr[i] += eye;
 
 			if (JAUMANN) {
 				R[i].setIdentity(); // for Jaumann stress rate, we do not need a subsequent rotation back into the reference configuration
@@ -420,7 +399,14 @@ void PairTlsph::compute(int eflag, int vflag) {
 		return;
 	}
 
+	/*
+	 * calculate deformations and rate-of-deformations
+	 */
 	PairTlsph::PreCompute();
+
+	/*
+	 * calculate stresses from constitutive models
+	 */
 	PairTlsph::AssembleStress();
 
 	/*
@@ -429,12 +415,11 @@ void PairTlsph::compute(int eflag, int vflag) {
 	 */
 	comm->forward_comm_pair(this);
 
+	/*
+	 * compute forces between particles
+	 */
 	updateFlag = 0;
 	ComputeForces(eflag, vflag);
-
-//	if (update->ntimestep % 1000 == 0) {
-//		updateFlag = 1;
-//	}
 }
 
 void PairTlsph::ComputeForces(int eflag, int vflag) {
@@ -450,14 +435,12 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	double *damage = atom->damage;
 	double *plastic_strain = atom->eff_plastic_strain;
 	double *rho = atom->rho;
-//double *eff_plastic_strain_rate = atom->eff_plastic_strain_rate;
-//double *damage = atom->damage;
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int i, j, jj, jnum, itype, idim;
 	double r, hg_mag, wf, wfd, h, r0, r0Sq, voli, volj;
 	double delVdotDelR, visc_magnitude, deltaE, mu_ij, hg_err, gamma_dot_dx, delta, scale;
-	double strain1d, strain1d_max, softening_strain, shepardWeight, rho_average;
+	double strain1d, strain1d_max, softening_strain, shepardWeight;
 	char str[128];
 	Vector3d fi, fj, dx0, dx, dv, f_stress, f_hg, dxp_i, dxp_j, gamma, g, gamma_i, gamma_j, x0i, x0j;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_spring;
@@ -468,7 +451,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
 	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
-//float **damage_onset_strain = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
 	Matrix3d eye;
 	eye.setIdentity();
 
@@ -499,7 +481,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 		h = 2.0 * radius[i];
 		r = 0.0;
 		spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
-		rho_average = wf * voli * rho[i];
 		shepardWeight = wf * voli;
 
 		for (idim = 0; idim < 3; idim++) {
@@ -632,7 +613,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				ev_tally_xyz(i, j, nlocal, 0, 0.0, 0.0, sumForces(0), sumForces(1), sumForces(2), dx(0), dx(1), dx(2));
 			}
 
-			rho_average += wf * volj * rho[j];
 			shepardWeight += wf * volj;
 
 			// check if a particle has moved too much w.r.t another particle
@@ -659,11 +639,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			if (failureModel[itype].failure_max_pairwise_strain) {
 
 				strain1d = (r - r0) / r0;
-				//if (domain->dimension == 2) {
-				//	strain1d_max = 2.0 * Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
-				//} else {
 				strain1d_max = Lookup[FAILURE_MAX_PAIRWISE_STRAIN_THRESHOLD][itype];
-				//}
 				softening_strain = 2.0 * strain1d_max;
 
 				if (strain1d > strain1d_max) {
@@ -677,55 +653,10 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				}
 			}
 
-//			if (failureModel[itype].integration_point_wise) {
-//
-//				strain1d = (r - r0) / r0;
-//				if (damage_onset_strain[i][jj] < 0.0) { // check if damage onset needs to be defined
-//					if ((damage[i] == 1.0) && (damage[j] == 1.0)) {
-//						if (strain1d > 0.0) {
-//							damage_onset_strain[i][jj] = strain1d;
-//						}
-//					}
-//				} else { // damage_onset strain is already defined
-//					if (strain1d > damage_onset_strain[i][jj]) {
-//						//softening_strain = 1.0 * damage_onset_strain[i][jj];
-//						softening_strain = MAX(0.3, 0.3 * damage_onset_strain[i][jj]);
-//						degradation_ij[i][jj] = (strain1d - damage_onset_strain[i][jj]) / softening_strain;
-//						degradation_ij[i][jj] = MIN(degradation_ij[i][jj], 1.0);
-//						if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
-//							partner[i][jj] = 0;
-//						}
-//					}
-//				}
-//
-//				// Eulerian proximity function
-//				// sclale interaction to 0 if current distance exceeds original distance
-//			}
-
-			if (failureModel[itype].integration_point_wise) {
-				//if (false) {
-				if ((damage[i] > 0.99) || (damage[j] > 0.99)) {
-					if (r > r0 + h) {
-						softening_strain = 0.5 * h;
-						degradation_ij[i][jj] = (r - r0 - h) / softening_strain;
-						degradation_ij[i][jj] = MIN(degradation_ij[i][jj], 1.0);
-						//printf("degrading interaction to %f\n", degradation_ij[i][jj]);
-					} else {
-						degradation_ij[i][jj] = 0.0;
-					}
-				}
-			}
-
 		} // end loop over jj neighbors of i
 
 		if (shepardWeight != 0.0) {
 			hourglass_error[i] /= shepardWeight;
-			rho_average /= shepardWeight;
-			// mass density smoothing
-			if (update->ntimestep % 100 == 0) {
-				//printf("timestep=%ld, rho=%f, avg rho=%f\n", update->ntimestep, rho[i], rho_average[i]);
-				rho[i] = rho_average;
-			}
 		}
 
 	} // end loop over i
@@ -748,7 +679,7 @@ void PairTlsph::AssembleStress() {
 	double *radius = atom->radius;
 	double *damage = atom->damage;
 	double *rmass = atom->rmass;
-//double *vfrac = atom->vfrac;
+	double *vfrac = atom->vfrac;
 	double *e = atom->e;
 	double *rho = atom->rho;
 	double pInitial, d_iso, pFinal, p_rate, plastic_strain_increment;
@@ -793,13 +724,7 @@ void PairTlsph::AssembleStress() {
 				d_dev = Deviator(D[i]); // deviatoric part of stretch rate
 				strain = 0.5 * (Fincr[i].transpose() * Fincr[i] - eye);
 				mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
-
-				// update curent mass density based on stretch rate tensor
-				double drho_dt = -rho[i] * d_iso;
-				rho[i] += drho_dt * dt;
-
-				// alternative method for determining current mass density
-				//rho[i] = rmass[i] / (detF[i] * vfrac[i]);
+				rho[i] = rmass[i] / (detF[i] * vfrac[i]);
 				vol_specific_energy = mass_specific_energy * rho[i];				// energy per current volume
 
 				/*
@@ -829,9 +754,6 @@ void PairTlsph::AssembleStress() {
 				 *  assemble total stress from pressure and deviatoric stress
 				 */
 				sigmaFinal = pFinal * eye + sigmaFinal_dev; // this is the stress that is kept
-
-				// bulk viscosity
-				//sigmaFinal += 0.06 * Lookup[REFERENCE_DENSITY][itype] * radius[i] * Lookup[SIGNAL_VELOCITY][itype] * d_iso * eye;
 
 				if (JAUMANN) {
 					/*
@@ -871,8 +793,6 @@ void PairTlsph::AssembleStress() {
 				 *  Damage due to failure criteria.
 				 */
 
-				//cout << "this is T" << T << endl;
-				//cout << "this is Fincr" << Fincr[i] << endl;
 				if (failureModel[itype].integration_point_wise) {
 					ComputeDamage(i, strain, T, T_damaged);
 					T = T_damaged;
@@ -899,8 +819,8 @@ void PairTlsph::AssembleStress() {
 
 				Matrix3d deltaSigma;
 				deltaSigma = sigmaFinal - sigmaInitial;
-				p_rate = deltaSigma.trace() / (3.0 * dt);
-				sigma_dev_rate = Deviator(deltaSigma) / dt;
+				p_rate = deltaSigma.trace() / (3.0 * dt + 1.0e-16);
+				sigma_dev_rate = Deviator(deltaSigma) / (dt + 1.0e-16);
 
 				double K_eff, mu_eff;
 				effective_longitudinal_modulus(itype, dt, d_iso, p_rate, d_dev, sigma_dev_rate, damage[i], K_eff, mu_eff, M_eff);
@@ -944,7 +864,6 @@ void PairTlsph::allocate() {
 
 	memory->create(strengthModel, n + 1, "pair:strengthmodel");
 	memory->create(eos, n + 1, "pair:eosmodel");
-//memory->create(failureModel, n + 1, "pair:failuremodel"); // allocated now
 	failureModel = new failure_types[n + 1];
 	memory->create(Lookup, MAX_KEY_VALUE, n + 1, "pair:LookupTable");
 
@@ -1846,6 +1765,8 @@ void *PairTlsph::extract(const char *str, int &i) {
 		return (void *) hourglass_error;
 	} else if (strcmp(str, "smd/tlsph/particle_dt_ptr") == 0) {
 		return (void *) particle_dt;
+	} else if (strcmp(str, "smd/tlsph/rotation_ptr") == 0) {
+		return (void *) R;
 	}
 
 	return NULL;
@@ -2026,7 +1947,6 @@ void PairTlsph::ComputePressure(const int i, const double pInitial, const double
 	itype = type[i];
 
 	double mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
-//double rho = rmass[i] / (detF[i] * vfrac[i]); // current mass density
 	double vol_specific_energy = mass_specific_energy * rho[i]; // energy per current volume
 
 	switch (eos[itype]) {
