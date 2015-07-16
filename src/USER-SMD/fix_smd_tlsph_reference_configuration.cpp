@@ -51,7 +51,7 @@ FixSMD_TLSPH_ReferenceConfiguration::FixSMD_TLSPH_ReferenceConfiguration(LAMMPS 
 	partner = NULL;
 	wfd_list = NULL;
 	wf_list = NULL;
-	damage_onset_strain = NULL;
+	energy_per_bond = NULL;
 	degradation_ij = NULL;
 	grow_arrays(atom->nmax);
 	atom->add_callback(0);
@@ -81,7 +81,7 @@ FixSMD_TLSPH_ReferenceConfiguration::~FixSMD_TLSPH_ReferenceConfiguration() {
 	memory->destroy(wfd_list);
 	memory->destroy(wf_list);
 	memory->destroy(degradation_ij);
-	memory->destroy(damage_onset_strain);
+	memory->destroy(energy_per_bond);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -299,7 +299,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			wfd_list[i][jj] = 0.0;
 			wf_list[i][jj] = 0.0;
 			degradation_ij[i][jj] = 0.0;
-			damage_onset_strain[i][jj] = 0.0;
+			energy_per_bond[i][jj] = 0.0;
 		}
 	}
 
@@ -452,7 +452,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::grow_arrays(int nmax) {
 	memory->grow(wfd_list, nmax, maxpartner, "tlsph_refconfig_neigh:wfd");
 	memory->grow(wf_list, nmax, maxpartner, "tlsph_refconfig_neigh:wf");
 	memory->grow(degradation_ij, nmax, maxpartner, "tlsph_refconfig_neigh:degradation_ij");
-	memory->grow(damage_onset_strain, nmax, maxpartner, "tlsph_refconfig_neigh:damage_onset_strain");
+	memory->grow(energy_per_bond, nmax, maxpartner, "tlsph_refconfig_neigh:damage_onset_strain");
 }
 
 /* ----------------------------------------------------------------------
@@ -466,7 +466,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::copy_arrays(int i, int j, int delflag)
 		wfd_list[j][m] = wfd_list[i][m];
 		wf_list[j][m] = wf_list[i][m];
 		degradation_ij[j][m] = degradation_ij[i][m];
-		damage_onset_strain[j][m] = damage_onset_strain[i][m];
+		energy_per_bond[j][m] = energy_per_bond[i][m];
 	}
 }
 
@@ -487,7 +487,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::pack_exchange(int i, double *buf) {
 		buf[m++] = wfd_list[i][n];
 		buf[m++] = wf_list[i][n];
 		buf[m++] = degradation_ij[i][n];
-		buf[m++] = damage_onset_strain[i][n];
+		buf[m++] = energy_per_bond[i][n];
 	}
 	return m;
 
@@ -516,7 +516,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::unpack_exchange(int nlocal, double *buf
 		wfd_list[nlocal][n] = static_cast<float>(buf[m++]);
 		wf_list[nlocal][n] = static_cast<float>(buf[m++]);
 		degradation_ij[nlocal][n] = static_cast<float>(buf[m++]);
-		damage_onset_strain[nlocal][n] = static_cast<float>(buf[m++]);
+		energy_per_bond[nlocal][n] = static_cast<float>(buf[m++]);
 	}
 	return m;
 }
@@ -534,7 +534,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::pack_restart(int i, double *buf) {
 		buf[m++] = wfd_list[i][n];
 		buf[m++] = wf_list[i][n];
 		buf[m++] = degradation_ij[i][n];
-		buf[m++] = damage_onset_strain[i][n];
+		buf[m++] = energy_per_bond[i][n];
 	}
 	return m;
 }

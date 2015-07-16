@@ -451,7 +451,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
 	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
-	float **energy_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
+	float **energy_per_bond = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->energy_per_bond;
 	Matrix3d eye;
 	eye.setIdentity();
 
@@ -629,14 +629,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				}
 			}
 
-			/*
-			 * failure model based on plastic strain:
-			 * if both interacting particles have exceed their plastic failure strain,
-			 * degrade per-pair interaction based on the evolution of plastic strain.
-			 * The degradation is only carried out for particles which move away from
-			 * each other, i.e., are in a tensile mode.
-			 */
-
 			if (failureModel[itype].failure_max_pairwise_strain) {
 
 				strain1d = (r - r0) / r0;
@@ -655,10 +647,10 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			}
 
 			if (failureModel[itype].failure_energy_release_rate) {
-
-				energy_ij[i][jj] += update->dt * f_stress.dot(dv) / (voli * volj);
-				double Vic = 3.0 * radius[i]; // interaction volume for 2d plane strain
-				if (energy_ij[i][jj] > Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] / (2.0 * Vic)) {
+				energy_per_bond[i][jj] += update->dt * f_stress.dot(dv) / (voli * volj);
+				double Vic = 3.0 * radius[i] * radius[i] * radius[i]; // interaction volume for 2d plane strain
+				double critical_energy_per_bond = 0.5 * Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] / (2.0 * Vic); // factor 0.5 because all pair interactions exist twice, see calculation of deltaE
+				if (energy_per_bond[i][jj] > critical_energy_per_bond) {
 					partner[i][jj] = 0;
 				}
 			}

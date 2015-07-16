@@ -12,18 +12,20 @@
 ####################################################################################################
 variable        E equal 1.0
 variable        nu equal 0.3
+variable        GIc equal 10.0e-6 # critical energy release rate: 10 J/m^2
 variable        rho equal 1.0
 variable        dstrain equal 1.05e-2 # final delta of percentage strain
 variable        q1 equal 0.06 # standard artificial viscosity
 variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
-variable        hg equal 10.0
+variable        hg equal 0.0
 variable        cp equal 1.0
 
 ####################################################################################################
 # DISCRETIZATION PARAMETERS
 ####################################################################################################
+variable        width equal 1.0
 variable        n equal 50
-variable        l0 equal 1.0/${n}
+variable        l0 equal ${width}/${n}
 variable        n2 equal 2*${n}
 variable        h equal 2.41*${l0}
 variable        vol_one equal ${l0}^2
@@ -80,7 +82,7 @@ fix             top_fix topf setforce 0 0 0
 fix             bot_fix botf setforce 0 0 0
 velocity        topf set 0  ${vel} 0 units box
 velocity        botf set 0 -${vel} 0 units box
-variable        force_bc equal 0.5*(-f_top_fix[2]+f_bot_fix[2])
+variable        stress_bc equal 0.5*(-f_top_fix[2]+f_bot_fix[2])/${width}
 
 ####################################################################################################
 # INTERACTION PHYSICS / MATERIAL MODEL
@@ -89,6 +91,7 @@ pair_style      tlsph
 pair_coeff      1 1 *COMMON  ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
                     *LINEAR_STRENGTH &
                     *EOS_LINEAR &
+                    *FAILURE_ENERGY_RELEASE_RATE ${GIc} &
                     *END
 ####################################################################################################
 # TIME INTEGRATION
@@ -111,13 +114,13 @@ dump            D1 all custom 100 dump.LAMMPS id type x y z c_contact_radius &
                 c_S[1] c_S[2] c_S[4] c_nneigh
 dump_modify     D1 first yes
 
-#fix 1 all ave/time 1 1 1 v_strain v_force_bc c_ave_stress_probe file stress_${h}_${l0}.dat
+fix 1 all ave/time 1 1 1 v_strain v_stress_bc file stress_${l0}.dat
 
 ####################################################################################################
 # STATUS OUTPUT
 ####################################################################################################
 thermo          100
-thermo_style    custom step v_strain v_force_bc
+thermo_style    custom step v_strain v_stress_bc
 thermo_modify   norm no
 
 
