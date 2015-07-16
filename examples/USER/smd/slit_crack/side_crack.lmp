@@ -1,0 +1,128 @@
+####################################################################################################
+#
+# PLATE WITH CRACK: TEST LFEM PREDICTION
+#
+# unit sytem: GPa / mm / ms
+#
+####################################################################################################
+
+
+####################################################################################################
+# MATERIAL PARAMETERS
+####################################################################################################
+variable        E equal 1.0
+variable        nu equal 0.3
+variable        rho equal 1.0
+variable        dstrain equal 1.05e-2 # final delta of percentage strain
+variable        q1 equal 0.06 # standard artificial viscosity
+variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
+variable        hg equal 10.0
+variable        cp equal 1.0
+
+####################################################################################################
+# DISCRETIZATION PARAMETERS
+####################################################################################################
+variable        n equal 50
+variable        l0 equal 1.0/${n}
+variable        n2 equal 2*${n}
+variable        h equal 2.41*${l0}
+variable        vol_one equal ${l0}^2
+variable        m_one equal ${rho}*${vol_one}
+variable        c0 equal sqrt(${E}/${rho}) # bulk soundspeed
+variable        dtCFL equal 0.25*${h}/${c0} # CFL timestep
+variable        neigh_skin equal 0.1*${h}
+
+variable        vel equal ${c0}/1.0e4 # velocity of boundary condition
+variable        trun equal 1.0*${dstrain}/${vel}
+variable        nrun equal round(${trun}/${dtCFL})
+
+print           "*--------------------------------------------------------------------------*"
+print           "l0=${l0}, c0=${c0}, dtCFL=${dtCFL}, mass=${m_one}, vol_one=${vol_one}"
+print           "vel=${vel}"
+print           "*--------------------------------------------------------------------------*"
+
+####################################################################################################
+# INITIALIZE LAMMPS
+####################################################################################################
+dimension       2
+units		si
+boundary        s s p
+atom_style      smd
+atom_modify	map array
+comm_modify     vel yes
+neighbor        ${neigh_skin} bin
+newton          off
+
+####################################################################################################
+# CREATE SIMULATION BOX AND PLATE
+####################################################################################################
+lattice         sq ${l0}
+region          box block 0 ${n} 0 ${n2} -0.1 0.1 units lattice
+create_box      1 box
+create_atoms    1 region box
+group           tlsph type 1
+set             group all diameter ${h}
+set             group all volume ${vol_one}
+set             group all mass ${m_one}
+variable        rad_sr equal 0.5*${l0}
+set             group all smd_contact_radius ${rad_sr}
+
+####################################################################################################
+# DEFINE DISPLACEMENT BOUNDARY CONDITIONS
+####################################################################################################
+variable        y1 equal 0.999*${n2}
+variable        y2 equal 0.001*${n2}
+region          topf block EDGE EDGE ${y1} EDGE EDGE EDGE units lattice
+region          botf block EDGE EDGE EDGE ${y2} EDGE EDGE units lattice
+group           topf region topf
+group           botf region botf
+fix             top_fix topf setforce 0 0 0
+fix             bot_fix botf setforce 0 0 0
+velocity        topf set 0  ${vel} 0 units box
+velocity        botf set 0 -${vel} 0 units box
+variable        force_bc equal 0.5*(-f_top_fix[2]+f_bot_fix[2])
+
+####################################################################################################
+# INTERACTION PHYSICS / MATERIAL MODEL
+####################################################################################################
+pair_style      tlsph
+pair_coeff      1 1 *COMMON  ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
+                    *LINEAR_STRENGTH &
+                    *EOS_LINEAR &
+                    *END
+####################################################################################################
+# TIME INTEGRATION
+####################################################################################################
+fix             dtfix tlsph smd/adjust_dt 0.1
+fix             integration_fix tlsph smd/integrate_tlsph
+
+####################################################################################################
+# SPECIFY TRAJECTORY OUTPUT
+####################################################################################################
+variable        dumpFreq equal 100
+
+compute         nneigh all smd/tlsph_num_neighs
+compute         S tlsph smd/tlsph_stress
+compute         contact_radius all smd/contact_radius
+variable        len0 equal bound(all,ymax)-bound(all,ymin)
+variable        strain equal (bound(all,ymax)-bound(all,ymin)-${len0})/${len0}
+
+dump            D1 all custom 100 dump.LAMMPS id type x y z c_contact_radius &
+                c_S[1] c_S[2] c_S[4] c_nneigh
+dump_modify     D1 first yes
+
+#fix 1 all ave/time 1 1 1 v_strain v_force_bc c_ave_stress_probe file stress_${h}_${l0}.dat
+
+####################################################################################################
+# STATUS OUTPUT
+####################################################################################################
+thermo          100
+thermo_style    custom step v_strain v_force_bc
+thermo_modify   norm no
+
+
+####################################################################################################
+# PERFORM INITIAL LOAD BALANCING AND RUN SIMULATION
+####################################################################################################
+print           "running for ${nrun} timesteps"
+run             ${nrun}

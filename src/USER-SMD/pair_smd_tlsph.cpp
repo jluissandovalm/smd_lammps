@@ -451,6 +451,7 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **wfd_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wfd_list;
 	float **wf_list = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->wf_list;
 	float **degradation_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->degradation_ij;
+	float **energy_ij = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->damage_onset_strain;
 	Matrix3d eye;
 	eye.setIdentity();
 
@@ -649,6 +650,15 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				}
 
 				if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
+					partner[i][jj] = 0;
+				}
+			}
+
+			if (failureModel[itype].failure_energy_release_rate) {
+
+				energy_ij[i][jj] += update->dt * f_stress.dot(dv) / (voli * volj);
+				double Vic = 3.0 * radius[i]; // interaction volume for 2d plane strain
+				if (energy_ij[i][jj] > Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] / (2.0 * Vic)) {
 					partner[i][jj] = 0;
 				}
 			}
@@ -1617,6 +1627,42 @@ void PairTlsph::coeff(int narg, char **arg) {
 						Lookup[FAILURE_MAX_PRINCIPAL_STRESS_THRESHOLD][itype]);
 			}
 		} // end maximum principal stress failure criterion
+
+		else if (strcmp(arg[ioffset], "*FAILURE_ENERGY_RELEASE_RATE") == 0) {
+			if (comm->me == 0) {
+				printf("reading *FAILURE_ENERGY_RELEASE_RATE\n");
+			}
+
+			t = string("*");
+			iNextKwd = -1;
+			for (iarg = ioffset + 1; iarg < narg; iarg++) {
+				s = string(arg[iarg]);
+				if (s.compare(0, t.length(), t) == 0) {
+					iNextKwd = iarg;
+					break;
+				}
+			}
+
+			if (iNextKwd < 0) {
+				sprintf(str, "no *KEYWORD terminates *FAILURE_ENERGY_RELEASE_RATE");
+				error->all(FLERR, str);
+			}
+
+			if (iNextKwd - ioffset != 1 + 1) {
+				sprintf(str, "expected 1 arguments following *FAILURE_ENERGY_RELEASE_RATE but got %d\n", iNextKwd - ioffset - 1);
+				error->all(FLERR, str);
+			}
+
+			failureModel[itype].failure_energy_release_rate = true;
+			Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] = force->numeric(FLERR, arg[ioffset + 1]);
+
+			if (comm->me == 0) {
+				printf("\n%60s\n", "critical energy release rate failure criterion");
+				printf("%60s : %g\n", "failure occurs when energy release rate reaches limit",
+						Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype]);
+			}
+		} // end maximum principal stress failure criterion
+
 		else {
 			sprintf(str, "unknown *KEYWORD: %s", arg[ioffset]);
 			error->all(FLERR, str);

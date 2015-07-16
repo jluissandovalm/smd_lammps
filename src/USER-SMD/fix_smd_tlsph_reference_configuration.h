@@ -49,6 +49,8 @@ public:
 	int size_restart(int);
 	int maxsize_restart();
 
+	bool crack_exclude(int i, int j);
+
 protected:
 	int updateFlag; // flag to update reference configuration
 	int nmax;

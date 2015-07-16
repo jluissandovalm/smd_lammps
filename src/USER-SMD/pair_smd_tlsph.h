@@ -163,7 +163,9 @@ protected:
 		FAILURE_JC_D4 = 48,
 		FAILURE_JC_EPDOT0 = 49,
 
-		MAX_KEY_VALUE = 50
+		CRITICAL_ENERGY_RELEASE_RATE = 50,
+
+		MAX_KEY_VALUE = 51
 	};
 
 	struct failure_types { // this is defined per type and determines which failure/damage model is active
@@ -174,6 +176,7 @@ protected:
 		bool failure_johnson_cook;
 		bool failure_max_pairwise_strain;
 		bool integration_point_wise; // true if failure model applies to stress/strain state of integration point
+		bool failure_energy_release_rate;
 
 		failure_types() {
 			failure_none = true;
@@ -183,6 +186,7 @@ protected:
 			failure_johnson_cook = false;
 			failure_max_pairwise_strain = false;
 			integration_point_wise = false;
+			failure_energy_release_rate = false;
 			//printf("constructed failure type\n");
 		}
 	};

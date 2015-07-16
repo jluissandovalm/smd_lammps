@@ -28,12 +28,14 @@
 #include "domain.h"
 #include <Eigen/Eigen>
 #include "smd_kernels.h"
+#include "smd_math.h"
 
 using namespace Eigen;
 using namespace LAMMPS_NS;
 using namespace FixConst;
 using namespace SMD_Kernels;
 using namespace std;
+using namespace SMD_Math;
 #define DELTA 16384
 
 /* ---------------------------------------------------------------------- */
@@ -245,6 +247,8 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			j &= NEIGHMASK;
 			jtype = type[j];
 
+			if (!crack_exclude(i, j)) continue;
+
 			dx(0) = x0[i][0] - x0[j][0];
 			dx(1) = x0[i][1] - x0[j][1];
 			dx(2) = x0[i][2] - x0[j][2];
@@ -268,6 +272,8 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			} else {
 				h = radius[i] + radius[j];
 			}
+
+
 
 			if (r <= h) {
 				npartner[i]++;
@@ -293,7 +299,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			wfd_list[i][jj] = 0.0;
 			wf_list[i][jj] = 0.0;
 			degradation_ij[i][jj] = 0.0;
-			damage_onset_strain[i][jj] = -1.0;
+			damage_onset_strain[i][jj] = 0.0;
 		}
 	}
 
@@ -324,6 +330,8 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			dx(2) = x0[i][2] - x0[j][2];
 			r = dx.norm();
 			jtype = type[j];
+
+			if (!crack_exclude(i, j)) continue;
 
 			if (ADAPTIVE_H) {
 				Fj(0, 0) = defgrad0[j][0];
@@ -638,4 +646,32 @@ void FixSMD_TLSPH_ReferenceConfiguration::unpack_forward_comm(int n, int first, 
 		defgrad0[i][7] = buf[m++];
 		defgrad0[i][8] = buf[m++];
 	}
+}
+
+
+/* ----------------------------------------------------------------------
+ routine for excluding bonds across a hradcoded slit crack
+ ------------------------------------------------------------------------- */
+
+bool FixSMD_TLSPH_ReferenceConfiguration::crack_exclude(int i, int j) {
+
+    double **x = atom->x;
+
+    // line between pair of atoms i,j
+    double x1 = x[i][0];
+    double y1 = x[i][1];
+
+    double x2 = x[j][0];
+    double y2 = x[j][1];
+
+    // hardcoded crack line
+    double x3 = -0.1;
+    double y3 = 1.005;
+    double x4 = 1. / 8.;
+    double y4 = 1.005;
+
+    bool retVal = DoLineSegmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4);
+
+    return !retVal;
+    //return 1;
 }
