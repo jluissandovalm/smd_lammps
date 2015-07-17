@@ -38,6 +38,8 @@ using namespace std;
 using namespace SMD_Math;
 #define DELTA 16384
 
+#define INSERT_PREDEFINED_CRACKS false
+
 /* ---------------------------------------------------------------------- */
 
 FixSMD_TLSPH_ReferenceConfiguration::FixSMD_TLSPH_ReferenceConfiguration(LAMMPS *lmp, int narg, char **arg) :
@@ -166,9 +168,9 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 //
 				if (nn[i] < 15) {
 					radius[i] *= 1.2;
-				}// else //{
-				//	radius[i] *= pow(J, 1.0 / domain->dimension);
-				//}
+				} // else //{
+				  //	radius[i] *= pow(J, 1.0 / domain->dimension);
+				  //}
 			}
 		}
 
@@ -247,7 +249,10 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			j &= NEIGHMASK;
 			jtype = type[j];
 
-			if (!crack_exclude(i, j)) continue;
+			if (INSERT_PREDEFINED_CRACKS) {
+				if (!crack_exclude(i, j))
+					continue;
+			}
 
 			dx(0) = x0[i][0] - x0[j][0];
 			dx(1) = x0[i][1] - x0[j][1];
@@ -272,8 +277,6 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			} else {
 				h = radius[i] + radius[j];
 			}
-
-
 
 			if (r <= h) {
 				npartner[i]++;
@@ -331,7 +334,10 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			r = dx.norm();
 			jtype = type[j];
 
-			if (!crack_exclude(i, j)) continue;
+			if (INSERT_PREDEFINED_CRACKS) {
+				if (!crack_exclude(i, j))
+					continue;
+			}
 
 			if (ADAPTIVE_H) {
 				Fj(0, 0) = defgrad0[j][0];
@@ -648,30 +654,29 @@ void FixSMD_TLSPH_ReferenceConfiguration::unpack_forward_comm(int n, int first, 
 	}
 }
 
-
 /* ----------------------------------------------------------------------
  routine for excluding bonds across a hradcoded slit crack
  ------------------------------------------------------------------------- */
 
 bool FixSMD_TLSPH_ReferenceConfiguration::crack_exclude(int i, int j) {
 
-    double **x = atom->x;
+	double **x = atom->x;
 
-    // line between pair of atoms i,j
-    double x1 = x[i][0];
-    double y1 = x[i][1];
+	// line between pair of atoms i,j
+	double x1 = x[i][0];
+	double y1 = x[i][1];
 
-    double x2 = x[j][0];
-    double y2 = x[j][1];
+	double x2 = x[j][0];
+	double y2 = x[j][1];
 
-    // hardcoded crack line
-    double x3 = -0.1;
-    double y3 = 1.005;
-    double x4 = 1. / 8.;
-    double y4 = 1.005;
+	// hardcoded crack line
+	double x3 = -0.1;
+	double y3 = 1.005;
+	double x4 = 1. / 8.;
+	double y4 = 1.005;
 
-    bool retVal = DoLineSegmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4);
+	bool retVal = DoLineSegmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4);
 
-    return !retVal;
-    //return 1;
+	return !retVal;
+	//return 1;
 }

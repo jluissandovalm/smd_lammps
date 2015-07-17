@@ -1661,7 +1661,7 @@ void PairTlsph::coeff(int narg, char **arg) {
 				printf("%60s : %g\n", "failure occurs when energy release rate reaches limit",
 						Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype]);
 			}
-		} // end maximum principal stress failure criterion
+		} // end energy release rate failure criterion
 
 		else {
 			sprintf(str, "unknown *KEYWORD: %s", arg[ioffset]);
