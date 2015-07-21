@@ -648,8 +648,9 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 
 			if (failureModel[itype].failure_energy_release_rate) {
 				energy_per_bond[i][jj] += update->dt * f_stress.dot(dv) / (voli * volj);
-				double Vic = 3.0 * radius[i] * radius[i] * radius[i]; // interaction volume for 2d plane strain
-				double critical_energy_per_bond = 0.5 * Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] / (2.0 * Vic); // factor 0.5 because all pair interactions exist twice, see calculation of deltaE
+				double h = radius[i] + radius[j];
+				double Vic = (2.0 / 3.0) * h * h * h; // interaction volume for 2d plane strain
+				double critical_energy_per_bond = Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] / (2.0 * Vic);
 				if (energy_per_bond[i][jj] > critical_energy_per_bond) {
 					partner[i][jj] = 0;
 				}

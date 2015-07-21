@@ -14,6 +14,7 @@
 #define SMD_MATH_H_
 
 #include <Eigen/Eigen>
+#include <iostream>
 using namespace Eigen;
 using namespace std;
 
@@ -54,7 +55,7 @@ static inline Matrix3d Deviator(const Matrix3d M) {
 
 static inline bool PolDec(Matrix3d M, Matrix3d &R, Matrix3d &T, bool scaleF) {
 
-	JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV); // SVD(A) = U S V*
+	JacobiSVD<Matrix3d> svd(M, ComputeFullU | ComputeFullV); // SVD(A) = U S V*
 	Vector3d S_eigenvalues = svd.singularValues();
 	Matrix3d S = svd.singularValues().asDiagonal();
 	Matrix3d U = svd.matrixU();
@@ -107,7 +108,7 @@ static inline bool PolDec(Matrix3d M, Matrix3d &R, Matrix3d &T, bool scaleF) {
 static inline void pseudo_inverse_SVD(Matrix3d &M) {
 
 	//JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV);
-	JacobiSVD < Matrix3d > svd(M, ComputeFullU); // one Eigevector base is sufficient because matrix is square and symmetric
+	JacobiSVD<Matrix3d> svd(M, ComputeFullU); // one Eigevector base is sufficient because matrix is square and symmetric
 
 	Vector3d singularValuesInv;
 	Vector3d singularValues = svd.singularValues();
@@ -210,14 +211,14 @@ static inline bool LimitMinMaxEigenvalues(Matrix3d &S, double min, double max) {
 
 static inline void reconstruct_rank_deficient_shape_matrix(Matrix3d &K) {
 
-		JacobiSVD < Matrix3d > svd(K, ComputeFullU | ComputeFullV);
-		Vector3d singularValues = svd.singularValues();
+	JacobiSVD<Matrix3d> svd(K, ComputeFullU | ComputeFullV);
+	Vector3d singularValues = svd.singularValues();
 
-		for (int i = 0; i < 3; i++) {
-			if (singularValues(i) < 1.0e-8) {
-				singularValues(i) = 1.0;
-			}
+	for (int i = 0; i < 3; i++) {
+		if (singularValues(i) < 1.0e-8) {
+			singularValues(i) = 1.0;
 		}
+	}
 
 //		int imin;
 //		double minev = singularValues.minCoeff(&imin);
@@ -231,38 +232,36 @@ static inline void reconstruct_rank_deficient_shape_matrix(Matrix3d &K) {
 //
 //		singularValues(2) = 1.0;
 
-		K = svd.matrixU() * singularValues.asDiagonal() * svd.matrixV().transpose();
-		//cout << "the reconstructed K is " << endl << K << endl;
-		//exit(1);
+	K = svd.matrixU() * singularValues.asDiagonal() * svd.matrixV().transpose();
+	//cout << "the reconstructed K is " << endl << K << endl;
+	//exit(1);
 }
 
 /* ----------------------------------------------------------------------
  helper functions for crack_exclude
  ------------------------------------------------------------------------- */
 static inline bool IsOnSegment(double xi, double yi, double xj, double yj, double xk, double yk) {
-    return (xi <= xk || xj <= xk) && (xk <= xi || xk <= xj) && (yi <= yk || yj <= yk) && (yk <= yi || yk <= yj);
+	return (xi <= xk || xj <= xk) && (xk <= xi || xk <= xj) && (yi <= yk || yj <= yk) && (yk <= yi || yk <= yj);
 }
 
 static inline char ComputeDirection(double xi, double yi, double xj, double yj, double xk, double yk) {
-    double a = (xk - xi) * (yj - yi);
-    double b = (xj - xi) * (yk - yi);
-    return a < b ? -1 : a > b ? 1 : 0;
+	double a = (xk - xi) * (yj - yi);
+	double b = (xj - xi) * (yk - yi);
+	return a < b ? -1.0 : a > b ? 1.0 : 0;
 }
 
 /** Do line segments (x1, y1)--(x2, y2) and (x3, y3)--(x4, y4) intersect? */
-static inline bool DoLineSegmentsIntersect(double x1, double y1, double x2, double y2, double x3, double y3, double x4,
-        double y4) {
-    char d1 = ComputeDirection(x3, y3, x4, y4, x1, y1);
-    char d2 = ComputeDirection(x3, y3, x4, y4, x2, y2);
-    char d3 = ComputeDirection(x1, y1, x2, y2, x3, y3);
-    char d4 = ComputeDirection(x1, y1, x2, y2, x4, y4);
-    return (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)))
-            || (d1 == 0 && IsOnSegment(x3, y3, x4, y4, x1, y1)) || (d2 == 0 && IsOnSegment(x3, y3, x4, y4, x2, y2))
-            || (d3 == 0 && IsOnSegment(x1, y1, x2, y2, x3, y3)) || (d4 == 0 && IsOnSegment(x1, y1, x2, y2, x4, y4));
+static inline bool DoLineSegmentsIntersect(double x1, double y1, double x2, double y2, double x3, double y3, double x4, double y4) {
+	char d1 = ComputeDirection(x3, y3, x4, y4, x1, y1);
+	char d2 = ComputeDirection(x3, y3, x4, y4, x2, y2);
+	char d3 = ComputeDirection(x1, y1, x2, y2, x3, y3);
+	char d4 = ComputeDirection(x1, y1, x2, y2, x4, y4);
+	return (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)))
+			|| (d1 == 0 && IsOnSegment(x3, y3, x4, y4, x1, y1)) || (d2 == 0 && IsOnSegment(x3, y3, x4, y4, x2, y2))
+			|| (d3 == 0 && IsOnSegment(x1, y1, x2, y2, x3, y3)) || (d4 == 0 && IsOnSegment(x1, y1, x2, y2, x4, y4));
 }
 
 }
 
 #endif /* SMD_MATH_H_ */
-
 

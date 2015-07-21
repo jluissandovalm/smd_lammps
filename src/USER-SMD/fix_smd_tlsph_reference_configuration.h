@@ -50,6 +50,7 @@ public:
 	int maxsize_restart();
 
 	bool crack_exclude(int i, int j);
+	bool get_line_intersection(int i, int j);
 
 protected:
 	int updateFlag; // flag to update reference configuration

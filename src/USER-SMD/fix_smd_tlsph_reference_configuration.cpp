@@ -11,6 +11,7 @@
  See the README file in the top-level LAMMPS directory.
  ------------------------------------------------------------------------- */
 
+#include "lattice.h"
 #include "mpi.h"
 #include "string.h"
 #include "stdio.h"
@@ -38,7 +39,7 @@ using namespace std;
 using namespace SMD_Math;
 #define DELTA 16384
 
-#define INSERT_PREDEFINED_CRACKS false
+#define INSERT_PREDEFINED_CRACKS true
 
 /* ---------------------------------------------------------------------- */
 
@@ -655,28 +656,33 @@ void FixSMD_TLSPH_ReferenceConfiguration::unpack_forward_comm(int n, int first, 
 }
 
 /* ----------------------------------------------------------------------
- routine for excluding bonds across a hradcoded slit crack
+ routine for excluding bonds across a hardcoded slit crack
+ Note that everything is scaled by lattice constant l0 to avoid
+ numerical inaccuracies.
  ------------------------------------------------------------------------- */
 
 bool FixSMD_TLSPH_ReferenceConfiguration::crack_exclude(int i, int j) {
 
 	double **x = atom->x;
+	double l0 = domain->lattice->xlattice;
 
 	// line between pair of atoms i,j
-	double x1 = x[i][0];
-	double y1 = x[i][1];
+	double x1 = x[i][0] / l0;
+	double y1 = x[i][1] / l0;
 
-	double x2 = x[j][0];
-	double y2 = x[j][1];
+	double x2 = x[j][0] / l0;
+	double y2 = x[j][1] / l0;
 
 	// hardcoded crack line
-	double x3 = -0.1;
-	double y3 = 1.005;
-	double x4 = 1. / 8.;
-	double y4 = 1.005;
+	double x3 = -0.1 / l0;
+	double y3 = ((int) 1.0 / l0)+ 0.5;
+	//printf("y3 = %f\n", y3);
+	double x4 = (1. / 8.) / l0;
+	double y4 = y3;
 
 	bool retVal = DoLineSegmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4);
 
 	return !retVal;
 	//return 1;
 }
+
