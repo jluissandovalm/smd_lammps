@@ -206,6 +206,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 // calculate npartner for each owned atom
 // nlocal_neigh = nlocal when neigh list was built, may be smaller than nlocal
 
+	double *vfrac = atom->vfrac;
 	double **x0 = atom->x;
 	double **defgrad0 = atom->smd_data_9;
 	double *radius = atom->radius;
@@ -419,6 +420,14 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 				fprintf(screen, "  max # of neighbors/atom = %d\n", maxpartner);
 				fprintf(screen, "  total # of neighbors = %d\n", nall);
 				fprintf(screen, "  neighbors/atom = %g\n\n", (double) nall / atom->natoms);
+
+//				for (i = 0; i < nlocal; i++) {
+//					h = radius[i] + radius[j];
+//					double Vic = (2.0 / 3.0) * h * h * h; // interaction volume for 2d plane strain
+//					printf("ratio VIc / neighbors = %f\n", Vic / (radius[i] * vfrac[i] * vfrac[i] * npartner[i]));
+//					printf("ratio VIc / neighbors = %f\n", Vic / (vfrac[i] * vfrac[i] * npartner[i] / radius[i]));
+//				}
+
 			}
 			if (logfile) {
 				fprintf(logfile, "TLSPH neighbors:\n");
@@ -675,9 +684,9 @@ bool FixSMD_TLSPH_ReferenceConfiguration::crack_exclude(int i, int j) {
 
 	// hardcoded crack line
 	double x3 = -0.1 / l0;
-	double y3 = ((int) 1.0 / l0)+ 0.5;
+	double y3 = ((int) 1.0 / l0) + 0.5;
 	//printf("y3 = %f\n", y3);
-	double x4 = (1. / 8.) / l0;
+	double x4 = 0.1 / l0 - 1.0 + 0.1;
 	double y4 = y3;
 
 	bool retVal = DoLineSegmentsIntersect(x1, y1, x2, y2, x3, y3, x4, y4);

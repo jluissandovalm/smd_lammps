@@ -15,7 +15,7 @@ variable        E equal 1.0
 variable        GIc equal 10.0e-6 # critical energy release rate: 10 J/m^2
 variable        rho equal 1.0
 variable        dstrain equal 2.05e-2 # final delta of percentage strain
-variable        q1 equal 0.06 # standard artificial viscosity
+variable        q1 equal 1.0 # standard artificial viscosity
 variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
 variable        hg equal 10
 variable        cp equal 1.0
@@ -24,10 +24,10 @@ variable        cp equal 1.0
 # DISCRETIZATION PARAMETERS
 ####################################################################################################
 variable        width equal 1.0
-variable        n equal 25
+variable        n equal 80
 variable        l0 equal ${width}/${n}
 variable        n2 equal 2*${n}
-variable        h equal 2.41*${l0}
+variable        h equal 2.01*${l0}
 variable        vol_one equal ${l0}^2
 variable        m_one equal ${rho}*${vol_one}
 variable        c0 equal sqrt(${E}/${rho}) # bulk soundspeed
@@ -107,11 +107,14 @@ variable        dumpFreq equal 100
 compute         nneigh all smd/tlsph_num_neighs
 compute         S tlsph smd/tlsph_stress
 compute         contact_radius all smd/contact_radius
+compute         eint all smd/internal_energy
+compute         alleint all reduce sum c_eint
+variable        nc equal c_alleint/(0.9*${n})
 variable        len0 equal bound(all,ymax)-bound(all,ymin)
 variable        strain equal (bound(all,ymax)-bound(all,ymin)-${len0})/${len0}
 
-dump            D1 all custom 100 dump.LAMMPS id type x y z c_contact_radius &
-                c_S[1] c_S[2] c_S[4] c_nneigh
+dump            D1 all custom 100 dump_${n}.LAMMPS id type x y z c_contact_radius &
+                c_S[1] c_S[2] c_S[4] c_nneigh c_eint
 dump_modify     D1 first yes
 
 fix 1 all ave/time 1 1 1 v_strain v_stress_bc file stress_${l0}.dat
@@ -120,7 +123,7 @@ fix 1 all ave/time 1 1 1 v_strain v_stress_bc file stress_${l0}.dat
 # STATUS OUTPUT
 ####################################################################################################
 thermo          100
-thermo_style    custom step v_strain v_stress_bc
+thermo_style    custom step v_strain v_stress_bc v_nc
 thermo_modify   norm no
 
 
