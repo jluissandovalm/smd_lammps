@@ -39,7 +39,7 @@ using namespace std;
 using namespace SMD_Math;
 #define DELTA 16384
 
-#define INSERT_PREDEFINED_CRACKS true
+#define INSERT_PREDEFINED_CRACKS false
 
 /* ---------------------------------------------------------------------- */
 
@@ -207,23 +207,17 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 // nlocal_neigh = nlocal when neigh list was built, may be smaller than nlocal
 
 	double **x0 = atom->x;
-	double **defgrad0 = atom->smd_data_9;
 	double *radius = atom->radius;
 	int *type = atom->type;
-	Matrix3d Fi, Fj, E, eye;
-	Vector3d projected_strain_vector;
-	double projected_strain;
+	int *mask = atom->mask;
 	tagint *tag = atom->tag;
 	NeighList *list = pair->list;
 	inum = list->inum;
 	ilist = list->ilist;
 	numneigh = list->numneigh;
 	firstneigh = list->firstneigh;
-	eye.setIdentity();
-	bool ADAPTIVE_H = false;
 
 	// zero npartner for all current atoms
-
 	for (i = 0; i < nlocal; i++)
 		npartner[i] = 0;
 
@@ -232,18 +226,6 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		itype = type[i];
 		jlist = firstneigh[i];
 		jnum = numneigh[i];
-
-		if (ADAPTIVE_H) {
-			Fi(0, 0) = defgrad0[i][0];
-			Fi(0, 1) = defgrad0[i][1];
-			Fi(0, 2) = defgrad0[i][2];
-			Fi(1, 0) = defgrad0[i][3];
-			Fi(1, 1) = defgrad0[i][4];
-			Fi(1, 2) = defgrad0[i][5];
-			Fi(2, 0) = defgrad0[i][6];
-			Fi(2, 1) = defgrad0[i][7];
-			Fi(2, 2) = defgrad0[i][8];
-		}
 
 		for (jj = 0; jj < jnum; jj++) {
 			j = jlist[jj];
@@ -259,25 +241,7 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			dx(1) = x0[i][1] - x0[j][1];
 			dx(2) = x0[i][2] - x0[j][2];
 			r = dx.norm();
-
-			if (ADAPTIVE_H) {
-				Fj(0, 0) = defgrad0[j][0];
-				Fj(0, 1) = defgrad0[j][1];
-				Fj(0, 2) = defgrad0[j][2];
-				Fj(1, 0) = defgrad0[j][3];
-				Fj(1, 1) = defgrad0[j][4];
-				Fj(1, 2) = defgrad0[j][5];
-				Fj(2, 0) = defgrad0[j][6];
-				Fj(2, 1) = defgrad0[j][7];
-				Fj(2, 2) = defgrad0[j][8];
-				//E = 0.25 * (Fj.transpose() * Fj - eye + Fi.transpose() * Fi - eye);
-				E = 0.5 * (Fi + Fj);
-				projected_strain_vector = E * (dx / r);
-				projected_strain = projected_strain_vector.norm();
-				h = projected_strain * (radius[i] + radius[j]);
-			} else {
-				h = radius[i] + radius[j];
-			}
+			h = radius[i] + radius[j];
 
 			if (r <= h) {
 				npartner[i]++;
@@ -313,18 +277,6 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		jlist = firstneigh[i];
 		jnum = numneigh[i];
 
-		if (ADAPTIVE_H) {
-			Fi(0, 0) = defgrad0[i][0];
-			Fi(0, 1) = defgrad0[i][1];
-			Fi(0, 2) = defgrad0[i][2];
-			Fi(1, 0) = defgrad0[i][3];
-			Fi(1, 1) = defgrad0[i][4];
-			Fi(1, 2) = defgrad0[i][5];
-			Fi(2, 0) = defgrad0[i][6];
-			Fi(2, 1) = defgrad0[i][7];
-			Fi(2, 2) = defgrad0[i][8];
-		}
-
 		for (jj = 0; jj < jnum; jj++) {
 			j = jlist[jj];
 			j &= NEIGHMASK;
@@ -334,29 +286,11 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			dx(2) = x0[i][2] - x0[j][2];
 			r = dx.norm();
 			jtype = type[j];
+			h = radius[i] + radius[j];
 
 			if (INSERT_PREDEFINED_CRACKS) {
 				if (!crack_exclude(i, j))
 					continue;
-			}
-
-			if (ADAPTIVE_H) {
-				Fj(0, 0) = defgrad0[j][0];
-				Fj(0, 1) = defgrad0[j][1];
-				Fj(0, 2) = defgrad0[j][2];
-				Fj(1, 0) = defgrad0[j][3];
-				Fj(1, 1) = defgrad0[j][4];
-				Fj(1, 2) = defgrad0[j][5];
-				Fj(2, 0) = defgrad0[j][6];
-				Fj(2, 1) = defgrad0[j][7];
-				Fj(2, 2) = defgrad0[j][8];
-				//E = 0.25 * (Fj.transpose() * Fj - eye + Fi.transpose() * Fi - eye);
-				E = 0.5 * (Fi + Fj);
-				projected_strain_vector = E * (dx / r);
-				projected_strain = projected_strain_vector.norm();
-				h = projected_strain * (radius[i] + radius[j]);
-			} else {
-				h = radius[i] + radius[j];
 			}
 
 			if (r < h) {
@@ -376,54 +310,34 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		}
 	}
 
-	// compute Shepard kernels
-//	double *vfrac = atom->vfrac;
-//	for (i = 0; i < nlocal; i++) {
-//
-//		double wshep = 0.0;
-//
-//		double self_wf, self_wfd;
-//		h = 2.0 * radius[i];
-//		r = 0.0;
-//		spiky_kernel_and_derivative(h, r, domain->dimension, self_wf, self_wfd);
-//
-//		wshep = vfrac[i] * wf;
-//
-//		for (jj = 0; jj < npartner[i]; jj++) {
-//			wf = wf_list[i][jj];
-//			wshep += vfrac[j] * wf;
-//		}
-//
-//		for (jj = 0; jj < npartner[i]; jj++) {
-//			wf = wf_list[i][jj];
-//			wfd = wfd_list[i][jj];
-//
-//			double wfd_shep = (wfd / wshep) - (wfd * wf * vfrac[j] / (wshep * wshep));
-//			wfd_list[i][jj] = wfd_shep;
-//			wf_list[i][jj] = wf / wshep;
-//		}
-//	}
+	// count number of particles for which this group is active
 
 	// bond statistics
 	if (update->ntimestep > -1) {
 		n = 0;
+		int count = 0;
 		for (i = 0; i < nlocal; i++) {
-			n += npartner[i];
+			if (mask[i] & groupbit) {
+				n += npartner[i];
+				count += 1;
+			}
 		}
-		int nall;
+		int nall, countall;
 		MPI_Allreduce(&n, &nall, 1, MPI_INT, MPI_SUM, world);
+		MPI_Allreduce(&count, &countall, 1, MPI_INT, MPI_SUM, world);
 
 		if (comm->me == 0) {
 			if (screen) {
-				fprintf(screen, "\nTLSPH neighbors:\n");
-				fprintf(screen, "  max # of neighbors/atom = %d\n", maxpartner);
-				fprintf(screen, "  total # of neighbors = %d\n", nall);
-				fprintf(screen, "  neighbors/atom = %g\n\n", (double) nall / atom->natoms);
+				printf("\n>>========>>========>>========>>========>>========>>========>>========>>========\n");
+				fprintf(screen, "TLSPH neighbors:\n");
+				fprintf(screen, "  max # of neighbors for a single particle = %d\n", maxpartner);
+				fprintf(screen, "  average # of neighbors/particle in group tlsph = %g\n", (double) nall / countall);
+				printf(">>========>>========>>========>>========>>========>>========>>========>>========\n\n");
 			}
 			if (logfile) {
-				fprintf(logfile, "TLSPH neighbors:\n");
-				fprintf(logfile, "  total # of neighbors = %d\n", nall);
-				fprintf(logfile, "  neighbors/atom = %g\n", (double) nall / atom->natoms);
+				fprintf(logfile, "\nTLSPH neighbors:\n");
+				fprintf(logfile, "  max # of neighbors for a single particle = %d\n", maxpartner);
+				fprintf(logfile, "  average # of neighbors/particle in group tlsph = %g\n", (double) nall / countall);
 			}
 		}
 	}
@@ -675,7 +589,7 @@ bool FixSMD_TLSPH_ReferenceConfiguration::crack_exclude(int i, int j) {
 
 	// hardcoded crack line
 	double x3 = -0.1 / l0;
-	double y3 = ((int) 1.0 / l0)+ 0.5;
+	double y3 = ((int) 1.0 / l0) + 0.5;
 	//printf("y3 = %f\n", y3);
 	double x4 = (1. / 8.) / l0;
 	double y4 = y3;
