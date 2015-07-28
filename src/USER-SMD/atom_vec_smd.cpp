@@ -851,7 +851,7 @@ int AtomVecSMD::size_restart() {
 	int i;
 
 	int nlocal = atom->nlocal;
-	int n = 41 * nlocal; // count pack_restart + 1 (size of buffer)
+	int n = 43 * nlocal; // count pack_restart + 1 (size of buffer)
 
 	if (atom->nextra_restart)
 		for (int iextra = 0; iextra < atom->nextra_restart; iextra++)
@@ -871,18 +871,18 @@ int AtomVecSMD::pack_restart(int i, double *buf) {
 
 	buf[m++] = x[i][0];
 	buf[m++] = x[i][1];
-	buf[m++] = x[i][2]; // 3
+	buf[m++] = x[i][2]; // 4
 	buf[m++] = x0[i][0];
 	buf[m++] = x0[i][1];
-	buf[m++] = x0[i][2]; // 6
+	buf[m++] = x0[i][2]; // 7
 	buf[m++] = ubuf(tag[i]).d;
 	buf[m++] = ubuf(type[i]).d;
-	buf[m++] = ubuf(mask[i]).d;
-	buf[m++] = ubuf(image[i]).d; //10
+	buf[m++] = ubuf(mask[i]).d; // 10
+	buf[m++] = ubuf(image[i]).d;
 	buf[m++] = ubuf(molecule[i]).d;
 	buf[m++] = radius[i];
 	buf[m++] = rmass[i];
-	buf[m++] = vfrac[i]; //14
+	buf[m++] = vfrac[i]; // 15
 	buf[m++] = contact_radius[i];
 	buf[m++] = e[i];
 	buf[m++] = eff_plastic_strain[i];

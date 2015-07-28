@@ -44,13 +44,11 @@
 #include "smd_material_models.h"
 #include "smd_math.h"
 #include "smd_kernels.h"
-//#include "smd_pa6_viscosity.h"
 
 using namespace SMD_Kernels;
 using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
-//using namespace SMD_PA6_VISCOSITY;
 
 #include <Eigen/SVD>
 #include <Eigen/Eigen>
@@ -154,57 +152,6 @@ void PairULSPH::PreCompute_DensitySummation() {
 	}
 
 	/*
-	 * STAGE 1: obtain Shepard weights
-	 */
-
-//	for (i = 0; i < nlocal; i++) {
-//		itype = type[i];
-//		if (setflag[itype][itype] == 1) {
-//			// self-contribution to Shepard weight
-//			h = 2.0 * radius[i];
-//			hsq = h * h;
-//			Poly6Kernel(hsq, h, 0.0, domain->dimension, wf);
-//			shepardWeight[i] = wf;
-//		}
-//	}
-//
-//	for (ii = 0; ii < inum; ii++) {
-//		i = ilist[ii];
-//		itype = type[i];
-//		jlist = firstneigh[i];
-//		jnum = numneigh[i];
-//		irad = radius[i];
-//
-//		xi << x[i][0], x[i][1], x[i][2];
-//
-//		for (jj = 0; jj < jnum; jj++) {
-//			j = jlist[jj];
-//			j &= NEIGHMASK;
-//
-//			xj << x[j][0], x[j][1], x[j][2];
-//			dx = xj - xi;
-//			rSq = dx.squaredNorm();
-//			h = irad + radius[j];
-//			hsq = h * h;
-//			if (rSq < hsq) {
-//
-//				jtype = type[j];
-//				Poly6Kernel(hsq, h, rSq, domain->dimension, wf);
-//
-//				if (setflag[itype][itype] == 1) {
-//					shepardWeight[i] += wf;
-//				}
-//
-//				if (j < nlocal) {
-//					if (setflag[jtype][jtype] == 1) {
-//						shepardWeight[j] += wf;
-//					}
-//				}
-//			} // end if check distance
-//		} // end loop over j
-//	} // end loop over i
-	//printf("... doing density summation\n");
-	/*
 	 * only recompute mass density if density summation is used.
 	 * otherwise, change in mass density is time-integrated
 	 */
@@ -281,7 +228,6 @@ void PairULSPH::PreCompute() {
 	Matrix3d Ktmp, Ltmp, Ftmp, K3di, D;
 	Vector3d xi, xj, vi, vj, x0i, x0j, dx0;
 	Matrix2d K2di, K2d;
-//	int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 
 	// zero accumulators
 	for (i = 0; i < nlocal; i++) {
@@ -512,20 +458,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 		PairULSPH::PreCompute(); // get velocity gradient and kernel gradient correction
 	}
 
-	/*
-	 * now we either have rho recomputed from scratch, or we know the volumetric strain increment.
-	 */
-
-//	if (!density_summation) {
-//		for (i = 0; i < nlocal; i++) {
-//			itype = type[i];
-//			if (setflag[itype][itype]) {
-//				D = 0.5 * (L[i] + L[i].transpose());
-//				double vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
-//				vfrac[i] += vol_increment;
-//			}
-//		}
-//	}
 	PairULSPH::AssembleStressTensor();
 
 	/*

@@ -647,11 +647,14 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 			}
 
 			if (failureModel[itype].failure_energy_release_rate) {
+
+				// integration approach
 				energy_per_bond[i][jj] += update->dt * f_stress.dot(dv) / (voli * volj);
-				double h = radius[i] + radius[j];
 				double Vic = (2.0 / 3.0) * h * h * h; // interaction volume for 2d plane strain
 				double critical_energy_per_bond = Lookup[CRITICAL_ENERGY_RELEASE_RATE][itype] / (2.0 * Vic);
+
 				if (energy_per_bond[i][jj] > critical_energy_per_bond) {
+					//degradation_ij[i][jj] = 1.0;
 					partner[i][jj] = 0;
 				}
 			}
