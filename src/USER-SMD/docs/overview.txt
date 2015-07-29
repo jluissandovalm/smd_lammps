@@ -1,43 +1,43 @@
-source file                                   | doc present? | rubber rings |
------------------------------------------------------------------------------------------------------------------------------------------------------------------ 
-atom_vec_smd                                  |              | x
-compute_smd_contact_radius.cpp                |              | x
-compute_smd_damage.cpp                        |              |
-compute_smd_hourglass_error.cpp               |              |
-compute_smd_internal_energy.cpp               |              | x
-compute_smd_peri_ipmb_info.cpp                |              |
-compute_smd_plastic_strain_rate.cpp           |              |
-compute_smd_plastic_strain.cpp                |              | x
-compute_smd_rho.cpp                           |              |
-compute_smd_tlsph_defgrad.cpp                 |              |
-compute_smd_tlsph_dt.cpp                      |              | x
-compute_smd_tlsph_num_neighs.cpp              |              | x
-compute_smd_tlsph_shape.cpp                   |              |
-compute_smd_tlsph_strain_rate.cpp             |              |
-compute_smd_tlsph_strain.cpp                  |              |
-compute_smd_tlsph_stress.cpp                  |              | x
-compute_smd_triangle_mesh_vertices.cpp        |              |
-compute_smd_ulsph_effm.cpp                    |              |
-compute_smd_ulsph_num_neighs.cpp              |              |
-compute_smd_ulsph_strain_rate.cpp             |              |
-compute_smd_ulsph_strain.cpp                  |              |
-compute_smd_ulsph_stress.cpp                  |              |
-compute_smd_vol.cpp                           |              |
-fix_peri_neigh_gcg.cpp                        |              |
-fix_smd_adjust_dt.cpp                         |              | x
-fix_smd_heat.cpp                              |              |
-fix_smd_integrate_tlsph.cpp                   |              | x
-fix_smd_integrate_ulsph.cpp                   |              |
-fix_smd_move_triangulated_surface.cpp         |              |
-fix_smd_setvel.cpp                            |              |
-fix_smd_tlsph_reference_configuration.cpp     |              | no/user
-fix_smd_wall_harmonic.cpp                     |              |
-fix_smd_wall_surface.cpp                      |              |
-pair_smd_hertz.cpp                            |              | x
-pair_smd_peri_ipmb.cpp                        |              |
-pair_smd_tlsph.cpp                            |              | x
-pair_smd_triangulated_surface.cpp             |              |
-pair_smd_ulsph.cpp                            |              |
-smd_material_models.cpp                       |              | no/user
-smd_math.h                                    |              | no/user
-                                              |              |
+source file                                   | doc present? | rubber rings | 2d strip
+----------------------------------------------------------------------------|------------------------------------------------------------------------------------- 
+atom_vec_smd                                  |              | x            | x
+compute_smd_contact_radius.cpp                | YES          | x            |
+compute_smd_damage.cpp                        | YES          |              | x
+compute_smd_hourglass_error.cpp               |              |              |
+compute_smd_internal_energy.cpp               |              | x            |
+compute_smd_peri_ipmb_info.cpp                |              |              |
+compute_smd_plastic_strain_rate.cpp           |              |              | x
+compute_smd_plastic_strain.cpp                |              | x            | x
+compute_smd_rho.cpp                           |              |              |
+compute_smd_tlsph_defgrad.cpp                 |              |              |
+compute_smd_tlsph_dt.cpp                      |              | x            | x
+compute_smd_tlsph_num_neighs.cpp              |              | x            | x
+compute_smd_tlsph_shape.cpp                   | YES          |              |
+compute_smd_tlsph_strain_rate.cpp             |              |              | x
+compute_smd_tlsph_strain.cpp                  |              |              | x
+compute_smd_tlsph_stress.cpp                  |              | x            | x
+compute_smd_triangle_mesh_vertices.cpp        |              |              | 
+compute_smd_ulsph_effm.cpp                    |              |              |
+compute_smd_ulsph_num_neighs.cpp              |              |              |
+compute_smd_ulsph_strain_rate.cpp             |              |              |
+compute_smd_ulsph_strain.cpp                  |              |              |
+compute_smd_ulsph_stress.cpp                  |              |              |
+compute_smd_vol.cpp                           |              |              |
+fix_peri_neigh_gcg.cpp                        |              |              |
+fix_smd_adjust_dt.cpp                         |              | x            |
+fix_smd_heat.cpp                              |              |              |
+fix_smd_integrate_tlsph.cpp                   |              | x            | x
+fix_smd_integrate_ulsph.cpp                   |              |              |
+fix_smd_move_triangulated_surface.cpp         |              |              |
+fix_smd_setvel.cpp                            |              |              | x
+fix_smd_tlsph_reference_configuration.cpp     |              | no/user      |
+fix_smd_wall_harmonic.cpp                     |              |              |
+fix_smd_wall_surface.cpp                      |              |              |
+pair_smd_hertz.cpp                            |              | x            |
+pair_smd_peri_ipmb.cpp                        |              |              |
+pair_smd_tlsph.cpp                            |              | x            | x
+pair_smd_triangulated_surface.cpp             |              |              |
+pair_smd_ulsph.cpp                            |              |              |
+smd_material_models.cpp                       |              | no/user      |
+smd_math.h                                    |              | no/user      |
+                                              |              |              |

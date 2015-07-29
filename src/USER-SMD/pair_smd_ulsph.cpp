@@ -778,8 +778,8 @@ void PairULSPH::AssembleStressTensor() {
 					break;
 				case VISCOSITY_NEWTON:
 					effectiveViscosity = Lookup[VISCOSITY_MU][itype];
-					double shear_rate = 2.0
-							* sqrt(d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2)); // 3d
+//					double shear_rate = 2.0
+//							* sqrt(d_dev(0, 1) * d_dev(0, 1) + d_dev(0, 2) * d_dev(0, 2) + d_dev(1, 2) * d_dev(1, 2)); // 3d
 					//cout << "shear rate: " << shear_rate << endl;
 					//effectiveViscosity = PA6_270C(shear_rate);
 					//if (effectiveViscosity > 178.062e-6) {

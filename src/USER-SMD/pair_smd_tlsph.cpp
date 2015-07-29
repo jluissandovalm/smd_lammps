@@ -434,7 +434,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	double *radius = atom->radius;
 	double *damage = atom->damage;
 	double *plastic_strain = atom->eff_plastic_strain;
-	double *rho = atom->rho;
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int i, j, jj, jnum, itype, idim;
@@ -659,6 +658,38 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 				}
 			}
 
+			if (failureModel[itype].integration_point_wise) {
+
+				strain1d = (r - r0) / r0;
+
+				if (strain1d > 0.0) {
+
+					if ((damage[i] == 1.0) && (damage[j] == 1.0)) {
+						// check if damage_onset is already defined
+						if (energy_per_bond[i][jj] == 0.0) { // pair damage not defined yet
+							energy_per_bond[i][jj] = strain1d;
+						} else { // damage initiation strain already defined
+							strain1d_max = energy_per_bond[i][jj];
+							softening_strain = 2.0 * strain1d_max;
+
+							if (strain1d > strain1d_max) {
+								degradation_ij[i][jj] = (strain1d - strain1d_max) / softening_strain;
+							} else {
+								degradation_ij[i][jj] = 0.0;
+							}
+						}
+					}
+
+					if (degradation_ij[i][jj] >= 1.0) { // delete interaction if fully damaged
+						partner[i][jj] = 0;
+					}
+
+				} else {
+					degradation_ij[i][jj] = 0.0;
+				} // end failureModel[itype].integration_point_wise
+
+			}
+
 		} // end loop over jj neighbors of i
 
 		if (shepardWeight != 0.0) {
@@ -731,7 +762,7 @@ void PairTlsph::AssembleStress() {
 				strain = 0.5 * (Fincr[i].transpose() * Fincr[i] - eye);
 				mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
 				rho[i] = rmass[i] / (detF[i] * vfrac[i]);
-				vol_specific_energy = mass_specific_energy * rho[i];				// energy per current volume
+				vol_specific_energy = mass_specific_energy * rho[i]; // energy per current volume
 
 				/*
 				 * pressure: compute pressure rate p_rate and final pressure pFinal
@@ -1539,7 +1570,7 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 		} // end maximum principal strain failure criterion
 		else if (strcmp(arg[ioffset], "*FAILURE_JOHNSON_COOK") == 0) {
-
+			error->all(FLERR, "this failure model is currently unsupported");
 			if (comm->me == 0) {
 				printf("reading *FAILURE_JOHNSON_COOK\n");
 			}
@@ -2108,9 +2139,9 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 	} else if (failureModel[itype].failure_max_plastic_strain) {
 		if (eff_plastic_strain[i] >= Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) {
 			damage_flag = true;
-			//damage[i] = 1.0;
-			double damage_gap = 0.5 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
-			damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
+			damage[i] = 1.0;
+			//double damage_gap = 0.5 * Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype];
+			//damage[i] = (eff_plastic_strain[i] - Lookup[FAILURE_MAX_PLASTIC_STRAIN_THRESHOLD][itype]) / damage_gap;
 		}
 	} else if (failureModel[itype].failure_johnson_cook) {
 
@@ -2135,13 +2166,13 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 	 * Apply damage to integration point
 	 */
 
-	damage[i] = MIN(damage[i], 0.8);
-
-	if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
-		stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
-	} else { // tension: particle has reduced tensile and shear load bearing capability
-		stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
-	}
+//	damage[i] = MIN(damage[i], 0.8);
+//
+//	if (pressure > 0.0) { // compression: particle can carry compressive load but reduced shear
+//		stress_damaged = -pressure * eye + (1.0 - damage[i]) * Deviator(stress);
+//	} else { // tension: particle has reduced tensile and shear load bearing capability
+//		stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
+//	}
 
 }
 

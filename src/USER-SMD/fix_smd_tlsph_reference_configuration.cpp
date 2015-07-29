@@ -206,7 +206,6 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 // calculate npartner for each owned atom
 // nlocal_neigh = nlocal when neigh list was built, may be smaller than nlocal
 
-	double *vfrac = atom->vfrac;
 	double **x0 = atom->x;
 	double *radius = atom->radius;
 	int *type = atom->type;
