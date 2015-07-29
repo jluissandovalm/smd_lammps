@@ -300,7 +300,7 @@ void FixSMDSetVel::post_force(int vflag) {
 
 		modify->addstep_compute(update->ntimestep + 1);
 
-		printf("setting velocity at timestep %d\n", update->ntimestep);
+		//printf("setting velocity at timestep %d\n", update->ntimestep);
 
 		for (int i = 0; i < nlocal; i++)
 			if (mask[i] & groupbit) {

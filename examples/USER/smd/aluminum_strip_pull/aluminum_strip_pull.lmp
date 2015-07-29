@@ -13,7 +13,7 @@
 variable 	E equal 70.0 # Young's modulus
 variable 	nu equal 0.3 # Poisson ratio
 variable 	rho equal 1 # initial mass density
-variable        q1 equal 0.06 # standard artificial viscosity linear coefficient
+variable        q1 equal 0.56 # standard artificial viscosity linear coefficient
 variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
 variable        hg equal 10.0 # hourglass control coefficient
 variable        cp equal 1.0 # heat capacity of material -- not used here
@@ -72,20 +72,22 @@ set 		group all diameter ${h} # set SPH kernel radius
 ####################################################################################################
 # DEFINE VELOCITY BOUNDARY CONDITIONS
 ####################################################################################################
-variable 	vel equal 0.04 # pull velocity
+variable 	vel0 equal 0.02 # pull velocity
 region 		top block EDGE EDGE 9.0 EDGE EDGE EDGE units box
 region 		bot block EDGE EDGE EDGE -9.1 EDGE EDGE units box
 group           top region top
 group           bot region bot
-fix             veltop_fix top smd/setvelocity 0  ${vel} 0
-fix             velbot_fix bot smd/setvelocity 0 -${vel} 0
+variable        vel_up equal ${vel0}*(1.0-exp(-0.01*time))
+variable        vel_down equal -v_vel_up
+fix             veltop_fix top smd/setvelocity 0 v_vel_up 0
+fix             velbot_fix bot smd/setvelocity 0 v_vel_down 0
 
 ####################################################################################################
 # INTERACTION PHYSICS / MATERIAL MODEL
 # We use polynomial EOS for the pressure and the Johnson Cook strength model
 # An integration point fails (cannot support tension anymore) if the plastic strain exceeds 0.5.
 ####################################################################################################
-pair_style      tlsph
+pair_style      smd/tlsph
 pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
 		*JOHNSON_COOK ${JC_A} ${JC_B}  ${JC_N} ${JC_C} ${JC_epsdot0} ${Troom} ${Tmelt} ${JC_M} &
 		*EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6} &
@@ -120,8 +122,10 @@ dump_modify 	dump_id first yes
 # STATUS OUTPUT
 ####################################################################################################
 variable stress equal 0.5*(f_velbot_fix[2]-f_veltop_fix[2])/20
-variable strain equal (2.0*${vel}*f_dtfix/20) # engineering strain
-fix stress_curve all print 10 "${strain} ${stress}" file stress_strain.dat screen no
+variable length equal xcm(top,y)-xcm(bot,y)
+variable strain equal (v_length-${length})/${length} # engineering strain
+variable time equal f_dtfix
+fix stress_curve all print 10 "${time} ${strain} ${stress}" file stress_strain.dat screen no
 
 thermo 100
 thermo_style custom step dt f_dtfix time v_strain
@@ -129,4 +133,4 @@ thermo_style custom step dt f_dtfix time v_strain
 ####################################################################################################
 # RUN SIMULATION
 ####################################################################################################
-run 10000
+run 25000
