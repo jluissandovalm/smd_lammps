@@ -10,7 +10,7 @@ pair_style smd/tri_surface command :h3
 
 [Syntax:]
 
-pair_style smd/tri_surface args scale_factor :pre
+pair_style smd/tri_surface scale_factor :pre
 
 [Examples:]
 

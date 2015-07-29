@@ -24,7 +24,7 @@
 
 #ifdef PAIR_CLASS
 
-PairStyle(tlsph,PairTlsph)
+PairStyle(smd/tlsph,PairTlsph)
 
 #else
 
@@ -112,8 +112,8 @@ protected:
 
 	enum {
 		LINEAR_DEFGRAD = 0,
-		LINEAR_STRENGTH = 1,
-		LINEAR_PLASTICITY = 2,
+		STRENGTH_LINEAR = 1,
+		STRENGTH_LINEAR_PLASTIC = 2,
 		STRENGTH_JOHNSON_COOK = 3,
 		STRENGTH_NONE = 4,
 		EOS_LINEAR = 5,

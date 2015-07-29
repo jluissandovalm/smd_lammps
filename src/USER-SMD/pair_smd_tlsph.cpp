@@ -57,12 +57,6 @@ using namespace std;
 using namespace LAMMPS_NS;
 using namespace SMD_Math;
 
-/*
- * TIME_INTEGRATE_DEFGRAD == true / rho aus detF berechnet: Spanen bei l0=0.125 funktioniert nicht: keine Kruemmung abe rnumerisch stabil.
- * TIME_INTEGRATE_DEFGRAD == false / rho aus detF berechnet: funktioniert und sieht gut aus.
- * TIME_INTEGRATE_DEFGRAD == false / rho in der Zeit inetgriert: numerisch instabil
- */
-
 #define JAUMANN false
 #define DETF_MIN 0.2 // maximum compression deformation allow
 #define DETF_MAX 2.0 // maximum tension deformation allowed
@@ -1149,15 +1143,15 @@ void PairTlsph::coeff(int narg, char **arg) {
 			if (comm->me == 0) {
 				printf("\n%60s\n", "Linear Elasticity model based on deformation gradient");
 			}
-		} else if (strcmp(arg[ioffset], "*LINEAR_STRENGTH") == 0) {
+		} else if (strcmp(arg[ioffset], "*STRENGTH_LINEAR") == 0) {
 
 			/*
 			 * Linear Elasticity strength only model based on strain rate
 			 */
 
-			strengthModel[itype] = LINEAR_STRENGTH;
+			strengthModel[itype] = STRENGTH_LINEAR;
 			if (comm->me == 0) {
-				printf("reading *LINEAR_STRENGTH\n");
+				printf("reading *STRENGTH_LINEAR\n");
 			}
 
 			t = string("*");
@@ -1171,12 +1165,12 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd < 0) {
-				sprintf(str, "no *KEYWORD terminates *LINEAR_STRENGTH");
+				sprintf(str, "no *KEYWORD terminates *STRENGTH_LINEAR");
 				error->all(FLERR, str);
 			}
 
 			if (iNextKwd - ioffset != 1) {
-				sprintf(str, "expected 0 arguments following *LINEAR_STRENGTH but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str, "expected 0 arguments following *STRENGTH_LINEAR but got %d\n", iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
@@ -1185,15 +1179,15 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 		} // end Linear Elasticity strength only model based on strain rate
 
-		else if (strcmp(arg[ioffset], "*LINEAR_PLASTICITY") == 0) {
+		else if (strcmp(arg[ioffset], "*STRENGTH_LINEAR_PLASTIC") == 0) {
 
 			/*
 			 * Linear Elastic / perfectly plastic strength only model based on strain rate
 			 */
 
-			strengthModel[itype] = LINEAR_PLASTICITY;
+			strengthModel[itype] = STRENGTH_LINEAR_PLASTIC;
 			if (comm->me == 0) {
-				printf("reading *LINEAR_PLASTICITY\n");
+				printf("reading *STRENGTH_LINEAR_PLASTIC\n");
 			}
 
 			t = string("*");
@@ -1207,12 +1201,12 @@ void PairTlsph::coeff(int narg, char **arg) {
 			}
 
 			if (iNextKwd < 0) {
-				sprintf(str, "no *KEYWORD terminates *LINEAR_PLASTICITY");
+				sprintf(str, "no *KEYWORD terminates *STRENGTH_LINEAR_PLASTIC");
 				error->all(FLERR, str);
 			}
 
 			if (iNextKwd - ioffset != 2 + 1) {
-				sprintf(str, "expected 2 arguments following *LINEAR_PLASTICITY but got %d\n", iNextKwd - ioffset - 1);
+				sprintf(str, "expected 2 arguments following *STRENGTH_LINEAR_PLASTIC but got %d\n", iNextKwd - ioffset - 1);
 				error->all(FLERR, str);
 			}
 
@@ -2068,7 +2062,7 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 	itype = type[i];
 
 	switch (strengthModel[itype]) {
-	case LINEAR_STRENGTH:
+	case STRENGTH_LINEAR:
 
 		sigma_dev_rate = 2.0 * Lookup[SHEAR_MODULUS][itype] * d_dev;
 		sigmaFinal_dev = sigmaInitial_dev + dt * sigma_dev_rate;
@@ -2082,7 +2076,7 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 		error->one(FLERR, "LINEAR_DEFGRAD is only for debugging purposes and currently deactivated.");
 		R[i].setIdentity();
 		break;
-	case LINEAR_PLASTICITY:
+	case STRENGTH_LINEAR_PLASTIC:
 
 		yieldStress = Lookup[YIELD_STRESS][itype] + Lookup[HARDENING_PARAMETER][itype] * eff_plastic_strain[i];
 		LinearPlasticStrength(Lookup[SHEAR_MODULUS][itype], yieldStress, sigmaInitial_dev, d_dev, dt, sigmaFinal_dev,
