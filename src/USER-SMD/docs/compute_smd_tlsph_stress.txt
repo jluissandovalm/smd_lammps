@@ -21,7 +21,7 @@ compute 1 all smd/tlsph_stress :pre
 
 [Description:]
 
-Define a computation that calculates the Cauchy stress tensor for particles interacting via the Total-Lagrangian SPH pair style.
+Define a computation that outputs the Cauchy stress tensor for particles interacting via the Total-Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
@@ -34,7 +34,7 @@ for an overview of LAMMPS output options.
 
 The values will be given in "units"_units.html of pressure.
 
-The per-particle vector has 7 entries. The first six entries correspond to the xx, yy, zz, xy, xz, yz components
+The per-particle vector has 7 entries. The first six entries correspond to the xx, yy, zz, xy, xz and yz components
 of the symmetric Cauchy stress tensor. The seventh entry is the second invariant of the stress tensor, i.e.,
 the von Mises equivalent stress.
 
@@ -44,7 +44,7 @@ This compute is part of the USER-SMD package.  It is only enabled if
 LAMMPS was built with that package.  See the "Making LAMMPS"_Section_start.html#start_3
 section for more info.
 
-This quantity will be computed only for particles which interact with tlsph pair style.
+This quantity will be computed only for particles which interact with the Total-Lagrangian SPH pair style.
 
 [Related commands:]
 

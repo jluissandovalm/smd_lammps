@@ -20,27 +20,25 @@ keyword = {*LINEAR} or {*WIGGLE} or {*ROTATE} :l
       Vx,Vy,Vz = components of velocity vector (velocity units), any component can be specified as NULL
    {*WIGGLE} args = Vx Vy Vz max_travel
       vx,vy,vz = components of velocity vector (velocity units), any component can be specified as NULL
-      max_travel = amplitud???
+      max_travel = wiggle amplitude
    {*ROTATE} args = Px Py Pz Rx Ry Rz period
       Px,Py,Pz = origin point of axis of rotation (distance units)
       Rx,Ry,Rz = axis of rotation vector
       period = period of rotation (time units) :pre
       
-one or more keyword/value pairs may be appended :l
 :ule      
 
 [Examples:]
 
-tool_fix tool smd/move_tri_surf *LINEAR 20 20 10
-tool_fix tool smd/move_tri_surf *WIGGLE 20 20 10
-tool_fix tool smd/move_tri_surf *ROTATE 0 0 0 5 2 1 :pre
+fix 1 tool smd/move_tri_surf *LINEAR 20 20 10
+fix 2 tool smd/move_tri_surf *WIGGLE 20 20 10
+fix 2 tool smd/move_tri_surf *ROTATE 0 0 0 5 2 1 :pre
 
 [Description:]
 
-This fix Perform updates of position and velocity for particles in
-the group each timestep using the specified settings or formulas,
-without regard to forces on the particles. This can be useful for
-implemanting Dirichlet Boundary Conditions (DBC).
+This fix applies only to rigid surfaces read from .STL files via fix "smd/wall_surface"_fix_smd_wall_surface.html .
+It updates position and velocity for the particles in the group each timestep without regard to forces on the particles.
+The rigid surfaces can thus be moved along simple trajectories during the simulation.
 
 The {*LINEAR} style moves particles with the specified constant velocity
 vector V = (Vx,Vy,Vz). This style also sets the velocity of each particle
@@ -67,7 +65,8 @@ Currently, no part of USER-SMD supports restarting nor minimization. This fix ha
 
 This fix is part of the USER-SMD package.  It is only enabled if
 LAMMPS was built with that package. See the "Making LAMMPS"_Section_start.html#start_3
-section for more info
+section for more info.
+
 
 [Related commands:]
 

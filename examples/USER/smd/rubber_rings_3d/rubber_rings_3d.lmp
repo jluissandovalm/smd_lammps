@@ -87,7 +87,7 @@ fix             integration_fix tlsph smd/integrate_tlsph
 ####################################################################################################
 # SPECIFY TRAJECTORY OUTPUT
 ####################################################################################################
-variable        dumpFreq equal 100
+variable        dumpFreq equal 30
 compute         S all smd/tlsph_stress # Cauchy stress tensor
 compute         nn all smd/tlsph_num_neighs # number of neighbors for each particle
 compute         cr all smd/contact_radius

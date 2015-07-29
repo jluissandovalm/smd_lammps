@@ -101,7 +101,7 @@ void AtomVecSMD::grow(int n) {
 	if (nmax < 0 || nmax > MAXSMALLINT)
 		error->one(FLERR, "Per-processor system is too big");
 
-	printf("in grow, nmax is now %d\n", nmax);
+	//printf("in grow, nmax is now %d\n", nmax);
 
 	tag = memory->grow(atom->tag, nmax, "atom:tag");
 	type = memory->grow(atom->type, nmax, "atom:type");

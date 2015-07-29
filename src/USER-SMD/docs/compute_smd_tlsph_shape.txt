@@ -24,8 +24,7 @@ compute 1 all smd/tlsph_shape :pre
 Define a computation that outputs the current shape of the volume associated with a particle as a rotated ellipsoid.
 It is only meaningful for particles which interact according to the Total-Lagrangian SPH pair style.
 
-See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in
-LAMMPS.
+See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 
 [Output info:]
 
@@ -44,10 +43,10 @@ This compute is part of the USER-SMD package.  It is only enabled if LAMMPS was
 built with that package. See the "Making LAMMPS"_Section_start.html#start_3
 section for more info.
 
-This quantity will be computed only for particles which interact with tlsph pair style.
+This quantity will be computed only for particles which interact with the Total-Lagrangian SPH pair style.
 
 [Related commands:]
 
-"smd/hourglass_error"_compute_smd_hourglass_error.html
+"smd/contact_radius"_compute_smd_contact_radius.html
 
 [Default:] none

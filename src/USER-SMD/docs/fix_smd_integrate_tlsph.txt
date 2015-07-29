@@ -12,14 +12,14 @@ fix smd/integrate_tlsph command :h3
 
 fix ID group-ID smd/integrate_tlsph keyword values :pre
 
-ID, group-ID are documented in "fix"_fix.html command :ulb,l
-smd/integrate_tlsph = style name of this fix command :l
+ID, group-ID are documented in "fix"_fix.html command
+smd/integrate_tlsph = style name of this fix command
+zero or more keyword/value pairs may be appended :ul
+
 keyword = {xsph} or {limit_velocity}  :l
 
   {limit_velocity} value = max_vel
     max_vel = maximum allowed velocity :pre
-
-zero or more keyword/value pairs may be appended :l
 
 :ule
 
@@ -30,14 +30,14 @@ fix 1 all smd/integrate_tlsph xsph limit_velocity 1000 :pre
 
 [Description:]
 
-The fix sets the method for the time integration as total-lagrange SPH.  
+The fix performs explicit time integration for particles which interact according with the Total-Lagrangian SPH pair style.  
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
 The {xsph} keyword activates Monaghan's XSPH time integration approach,
 where a particle is moved according to the average velocity within its
 neighborhood. If the xsph keyword is absent, the usual Velocity-Verlet
-time intergration approach is employed.
+time integration approach is employed.
 
 The {limit_velocity} keyword will control the velocity, scaling the norm of
 the velocity vector to max_vel in case it exceeds this velocity limit. 
@@ -54,6 +54,6 @@ section for more info.
 
 [Related commands:]
 
-"smd/integrate_usph"_fix_smd_integrate_usph.html
+"smd/integrate_ulsph"_fix_smd_integrate_ulsph.html
 
 [Default:] none

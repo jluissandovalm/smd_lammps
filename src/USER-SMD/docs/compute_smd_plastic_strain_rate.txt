@@ -21,7 +21,7 @@ compute 1 all smd/plastic_strain_rate :pre
 
 [Description:]
 
-Define a computation that calculates the rate of the equivalent plastic strain.
+Define a computation that outputs the time rate of the equivalent plastic strain.
 This command is only meaningful if a material model with plasticity is defined.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
@@ -39,7 +39,8 @@ The per-particle values will be given in "units"_units.html of one over time.
 
 This compute is part of the USER-SMD package.  It is only enabled if
 LAMMPS was built with that package.  See the "Making LAMMPS"_Section_start.html#start_3
-section for more info.
+section for more info. This compute can only be used for particles which interact via the
+updated Lagrangian or total Lagrangian SPH pair styles.
 
 [Related commands:]
 

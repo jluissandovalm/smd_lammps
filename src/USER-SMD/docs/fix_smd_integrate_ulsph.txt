@@ -14,7 +14,7 @@ fix ID group-ID smd/integrate_ulsph keyword :pre
 
 ID, group-ID are documented in "fix"_fix.html command
 smd/integrate_ulsph = style name of this fix command
-zero or more keyword/value pairs may be appended
+zero or more keyword/value pairs may be appended :ul
 
 keyword = xsph or adjust_radius or limit_velocity
 
@@ -27,20 +27,25 @@ limit_velocity values = max_velocity
       max_velocity = maximum allowed velocity.  
    
 
-Note to self: remove updte / reinit keywords from this fix.
-
 [Examples:]
 
-fix 1 all smd/integrate_ulsph adjust_radius 0.5 25 50 :pre
+fix 1 all smd/integrate_ulsph adjust_radius 1.02 25 50 :pre
 fix 1 all smd/integrate_ulsph xsph limit_velocity 1000 :pre
 
 [Description:]
 
-The fix sets the method for the time integration as updated-lagrange SPH.
+The fix performs explicit time integration for particles which interact with the updated Lagrangian SPH pair style.
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
 The {xsph} keyword activates Monaghan's XSPH time integration approach, where a particle is moved according to the average velocity within its neighborhood.
-If the xsph keyword is absent, the usual Velocity-Verlet time intergration approach is employed.  
+If the xsph keyword is absent, the usual Velocity-Verlet time intergration approach is employed.
+
+The {adjust_radius} keyword activates dynamic adjustment of the per-particle SPH smoothing kernel radius such that the number of neighbors per particles remains
+within the interval {min_nn} to {max_nn}. The parameter {adjust_radius_factor} determines the amount of adjustment per timestep. Typical values are
+{adjust_radius_factor}=1.02, {min_nn}=15, and {max_nn}=20.
+
+The {limit_velocity} keyword will control the velocity, scaling the norm of
+the velocity vector to max_vel in case it exceeds this velocity limit. 
 
 [Restart, fix_modify, output, run start/stop, minimize info:]
 

@@ -22,7 +22,7 @@ compute 1 all smd/ulsph_num_neighs :pre
 [Description:]
 
 Define a computation that returns the number of neighbor particles
-inside of the smoothing radius for particles interacting via the updated Lagrangian SPH pair style.
+inside of the smoothing kernel radius for particles interacting via the updated Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
 
@@ -39,9 +39,7 @@ The per-particle values will be given dimentionless, see "units"_units.html.
 
 This compute is part of the USER-SMD package.  It is only enabled if
 LAMMPS was built with that package.  See the "Making LAMMPS"_Section_start.html#start_2
-section for more info.
-
-This command works only with the ulsph pair style.
+section for more info. This compute can only be used for particles which interact with the updated Lagrangian SPH pair style.
 
 [Related commands:]
 

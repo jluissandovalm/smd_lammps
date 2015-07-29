@@ -21,14 +21,14 @@ compute 1 all smd/hourglass_error :pre
 
 [Description:]
 
-Define a computation that calculates the error of the approximated
+Define a computation which outputs the error of the approximated
 relative separation with respect to the actual relative separation of
 the particles i and j. Ideally, if the deformation gradient is exact,
 and there exists a unique mapping between all particles' positions
 within the neighborhood of the central node and the deformation gradient,
 the approximated relative separation will coincide with the actual relative
 separation of the particles i and j in the deformed configuration.
-This compute is only really useful for debugging the hourglass control mechanim.  
+This compute is only really useful for debugging the hourglass control mechanim which is part of the Total-Lagrangian SPH pair style.  
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to use Smooth Mach Dynamics in LAMMPS.
 

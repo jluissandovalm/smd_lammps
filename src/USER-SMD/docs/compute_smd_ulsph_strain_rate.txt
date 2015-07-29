@@ -21,7 +21,7 @@ compute 1 all smd/ulsph_strain_rate :pre
 
 [Description:]
 
-Define a computation that calculates the rate of the logarithmic strain tensor
+Define a computation that outputs the rate of the logarithmic strain tensor
 for particles interacting via the updated Lagrangian SPH pair style.
 
 See "this PDF guide"_USER/smd/SMD_LAMMPS_userguide.pdf to using Smooth Mach Dynamics in LAMMPS.
@@ -42,9 +42,8 @@ of the symmetric strain rate tensor.
 
 This compute is part of the USER-SMD package.  It is only enabled if
 LAMMPS was built with that package. See the "Making LAMMPS"_Section_start.html#start_2
-section for more info.
+section for more info. This compute can only be used for particles which interact with the updated Lagrangian SPH pair style.
 
-This command works only with the ulsph pair style.
 
 [Related commands:]
 
