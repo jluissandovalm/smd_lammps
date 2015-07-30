@@ -289,14 +289,15 @@ void PairULSPH::PreCompute() {
 				dx0 = x0j - x0i;
 
 				// kernel and derivative
-				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				//spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				barbara_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 
 				// uncorrected kernel gradient
 				g = (wfd / r) * dx;
 
 				/* build correction matrix for kernel derivatives */
 				if (gradient_correction_flag) {
-					Ktmp = -g * dx.transpose();
+					Ktmp = g * dx.transpose();
 					K[i] += jvol * Ktmp;
 				}
 
@@ -331,8 +332,15 @@ void PairULSPH::PreCompute() {
 		if (setflag[itype][itype]) {
 			if (gradient_correction_flag) {
 				pseudo_inverse_SVD(K[i]);
+
 				L[i] *= K[i];
 				F[i] *= K[i];
+
+
+				double maxStrainRate = 1000.0 * radius[i] / Lookup[REFERENCE_SOUNDSPEED][itype];
+				L[i] = LimitEigenvalues(L[i], maxStrainRate);
+
+				//cout << "this is K" << endl << K[i] << endl << endl;
 			} // end if (gradient_correction[itype]) {
 
 			/*
@@ -520,7 +528,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 				dvint = vintj - vinti;
 
 				// kernel and derivative
-				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				//spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				barbara_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 
 				// uncorrected kernel gradient
 				g = (wfd / r) * dx;
@@ -663,12 +672,12 @@ void PairULSPH::AssembleStressTensor() {
 
 	dtCFL = 1.0e22;
 	eye.setIdentity();
-	newStressDeviator.setZero();
-	newPressure = 0.0;
 
 	for (i = 0; i < nlocal; i++) {
 		itype = type[i];
 		if (setflag[itype][itype] == 1) {
+			newStressDeviator.setZero();
+			newPressure = 0.0;
 			stressTensor[i].setZero();
 			vol = vfrac[i];
 			rho = rmass[i] / vfrac[i];
@@ -706,7 +715,6 @@ void PairULSPH::AssembleStressTensor() {
 			 */
 
 			if (strength[itype] != NONE) {
-
 				/*
 				 * initial stress state: given by the unrotateted Cauchy stress.
 				 * Assemble Eigen 3d matrix from stored stress state
@@ -801,7 +809,7 @@ void PairULSPH::AssembleStressTensor() {
 			 * kernel gradient correction
 			 */
 			if (gradient_correction_flag) {
-				stressTensor[i] = stressTensor[i] * K[i];
+				stressTensor[i] = K[i] * stressTensor[i];
 			}
 
 			/*

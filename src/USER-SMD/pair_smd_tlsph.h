@@ -69,7 +69,8 @@ public:
 	void effective_longitudinal_modulus(const int itype, const double dt, const double d_iso, const double p_rate,
 			const Matrix3d d_dev, const Matrix3d sigma_dev_rate, const double damage, double &K_eff, double &mu_eff, double &M_eff);
 
-	void ComputePressure(const int i, const double pInitial, const double d_iso, double &pFinal, double &p_rate);
+	void ComputePressure(const int i, const double rho, const double mass_specific_energy, const double vol_specific_energy,
+			const double pInitial, const double d_iso, double &pFinal, double &p_rate);
 	void ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_dev, const Matrix3d d_dev, Matrix3d &sigmaFinal_dev,
 			Matrix3d &sigma_dev_rate, double &plastic_strain_increment);
 	void ComputeDamage(const int i, const Matrix3d strain, const Matrix3d sigmaFinal, Matrix3d &sigma_damaged);

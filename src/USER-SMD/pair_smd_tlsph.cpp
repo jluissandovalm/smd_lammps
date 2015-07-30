@@ -712,12 +712,11 @@ void PairTlsph::AssembleStress() {
 	double *rmass = atom->rmass;
 	double *vfrac = atom->vfrac;
 	double *e = atom->e;
-	double *rho = atom->rho;
 	double pInitial, d_iso, pFinal, p_rate, plastic_strain_increment;
 	int i, itype;
 	int nlocal = atom->nlocal;
 	double dt = update->dt;
-	double M_eff, p_wave_speed, mass_specific_energy, vol_specific_energy;
+	double M_eff, p_wave_speed, mass_specific_energy, vol_specific_energy, rho;
 	Matrix3d sigma_rate, eye, sigmaInitial, sigmaFinal, T, T_damaged, Jaumann_rate, sigma_rate_check;
 	Matrix3d d_dev, sigmaInitial_dev, sigmaFinal_dev, sigma_dev_rate, strain;
 	Vector3d x0i, xi, xp;
@@ -755,14 +754,14 @@ void PairTlsph::AssembleStress() {
 				d_dev = Deviator(D[i]); // deviatoric part of stretch rate
 				strain = 0.5 * (Fincr[i].transpose() * Fincr[i] - eye);
 				mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
-				rho[i] = rmass[i] / (detF[i] * vfrac[i]);
-				vol_specific_energy = mass_specific_energy * rho[i]; // energy per current volume
+				rho = rmass[i] / (detF[i] * vfrac[i]);
+				vol_specific_energy = mass_specific_energy * rho; // energy per current volume
 
 				/*
 				 * pressure: compute pressure rate p_rate and final pressure pFinal
 				 */
 
-				ComputePressure(i, pInitial, d_iso, pFinal, p_rate);
+				ComputePressure(i, rho, mass_specific_energy, vol_specific_energy, pInitial, d_iso, pFinal, p_rate);
 
 				/*
 				 * material strength
@@ -855,7 +854,7 @@ void PairTlsph::AssembleStress() {
 
 				double K_eff, mu_eff;
 				effective_longitudinal_modulus(itype, dt, d_iso, p_rate, d_dev, sigma_dev_rate, damage[i], K_eff, mu_eff, M_eff);
-				p_wave_speed = sqrt(M_eff / rho[i]);
+				p_wave_speed = sqrt(M_eff / rho);
 
 				if (mol[i] < 0) {
 					error->one(FLERR, "this should not happen");
@@ -2001,20 +2000,14 @@ void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt,
 /* ----------------------------------------------------------------------
  compute pressure. Called from AssembleStress().
  ------------------------------------------------------------------------- */
-void PairTlsph::ComputePressure(const int i, const double pInitial, const double d_iso, double &pFinal, double &p_rate) {
-	double *rmass = atom->rmass;
-//double *vfrac = atom->vfrac;
-	double *e = atom->e;
-	double *rho = atom->rho;
+void PairTlsph::ComputePressure(const int i, const double rho, const double mass_specific_energy, const double vol_specific_energy,
+	const double pInitial, const double d_iso, double &pFinal, double &p_rate) {
 	int *type = atom->type;
 	double dt = update->dt;
 
 	int itype;
 
 	itype = type[i];
-
-	double mass_specific_energy = e[i] / rmass[i]; // energy per unit mass
-	double vol_specific_energy = mass_specific_energy * rho[i]; // energy per current volume
 
 	switch (eos[itype]) {
 	case EOS_LINEAR:
@@ -2026,11 +2019,11 @@ void PairTlsph::ComputePressure(const int i, const double pInitial, const double
 		break;
 	case EOS_SHOCK:
 //  rho,  rho0,  e,  e0,  c0,  S,  Gamma,  pInitial,  dt,  &pFinal,  &p_rate);
-		ShockEOS(rho[i], Lookup[REFERENCE_DENSITY][itype], mass_specific_energy, 0.0, Lookup[EOS_SHOCK_C0][itype],
+		ShockEOS(rho, Lookup[REFERENCE_DENSITY][itype], mass_specific_energy, 0.0, Lookup[EOS_SHOCK_C0][itype],
 				Lookup[EOS_SHOCK_S][itype], Lookup[EOS_SHOCK_GAMMA][itype], pInitial, dt, pFinal, p_rate);
 		break;
 	case EOS_POLYNOMIAL:
-		polynomialEOS(rho[i], Lookup[REFERENCE_DENSITY][itype], vol_specific_energy, Lookup[EOS_POLYNOMIAL_C0][itype],
+		polynomialEOS(rho, Lookup[REFERENCE_DENSITY][itype], vol_specific_energy, Lookup[EOS_POLYNOMIAL_C0][itype],
 				Lookup[EOS_POLYNOMIAL_C1][itype], Lookup[EOS_POLYNOMIAL_C2][itype], Lookup[EOS_POLYNOMIAL_C3][itype],
 				Lookup[EOS_POLYNOMIAL_C4][itype], Lookup[EOS_POLYNOMIAL_C5][itype], Lookup[EOS_POLYNOMIAL_C6][itype], pInitial, dt,
 				pFinal, p_rate);

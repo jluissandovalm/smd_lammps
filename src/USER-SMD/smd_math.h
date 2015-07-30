@@ -116,7 +116,7 @@ static inline void pseudo_inverse_SVD(Matrix3d &M) {
 //cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
 //cout << "Its singular values are:" << endl << singularValues << endl;
 
-	double pinvtoler = 1.0e-16;
+	double pinvtoler = 1.0e-16; // 2d machining example goes unstable if this value is increased.
 	for (long row = 0; row < 3; row++) {
 		if (singularValues(row) > pinvtoler) {
 			singularValuesInv(row) = 1.0 / singularValues(row);

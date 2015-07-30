@@ -5,7 +5,7 @@ variable        rho equal 1000 # mass density of water dropt
 variable        h equal 0.08 # characteristic smoothing length, used here only for determining 
 variable        K equal 2e5 # bulk modulus of the fluid
 variable        hg equal 0 # hourglass control coefficient, must be zero for fluids.
-variable        art_visc equal 1.0 # We can set the artificial viscosity to zero if physical visc. is present.
+variable        art_visc equal 0.5 # We can set the artificial viscosity to zero if physical visc. is present.
 # ----
 variable        c0 equal sqrt(${K}/${rho}) # speed of sound
 variable        dt equal 0.125*${h}/${c0} # CFL estimate for the stable timestep
@@ -25,11 +25,9 @@ newton          off
 read_data       disc_adjusted.data # read a geometry.
 
 # this is an updated-Lagrangian pair style with Tait EOS and physical viscosity.
-pair_style      ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION
+pair_style      smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION
 #                           density speed_of_sound artif.visc.  heat.capacity hourglass
 pair_coeff      1 1 *COMMON ${rho}  ${c0}          ${art_visc}  0             ${hg} &
-		*ARTIFICIAL_PRESSURE &
-		*VISCOSITY_NEWTON 100.0 &
 		*EOS_TAIT 7 &
 	        *END
 
@@ -46,13 +44,13 @@ variable        amz equal angmom(all,z) # angular momentum
 # time integration
 timestep        ${dt} # set an initial estimate for the zero-th timestep
 fix             dtfix all smd/adjust_dt 0.1 # dynamically adjust stable timestep
-fix             integration_fix all smd/integrate_ulsph xsph #adjust_radius 1.2 # actual integration for equations of motion
+fix             integration_fix all smd/integrate_ulsph adjust_radius 1.2 10 15 # actual integration for equations of motion
 
 variable        dumpFreq equal 10
 dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
                 fx fy fz vx vy vz c_eint &
                 c_contact_radius c_nn mol c_rho c_S[1] c_S[2] c_S[4] radius &
-                c_D[1] c_D[2] c_D[3]
+                c_D[1] c_D[2] c_D[4]
 
 dump_modify     dump_id first yes
 

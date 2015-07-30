@@ -59,13 +59,13 @@ set             group all smd_mass_density ${rho_water}
 set             group solids smd_mass_density ${rho_obj}
 
 # set pair styles
-pair_style      hybrid/overlay ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION &
-                               tlsph smd/hertz 1.5
-pair_coeff      1 1 ulsph *COMMON ${rho_water} ${c0} 0.1 1 0 &
+pair_style      hybrid/overlay smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION &
+                               smd/tlsph smd/hertz 1.5
+pair_coeff      1 1 smd/ulsph *COMMON ${rho_water} ${c0} 0.2 1 0 &
 		*EOS_TAIT 7.0 &
 	        *END
-pair_coeff      2 2 tlsph *COMMON ${rho_obj} ${E} 0.3 0.5 0.0 10 1.0 &
-                *LINEAR_PLASTICITY ${sigma_yield} 0 &
+pair_coeff      2 2 smd/tlsph *COMMON ${rho_obj} ${E} 0.3 0.5 0.0 10 1.0 &
+                *STRENGTH_LINEAR_PLASTIC ${sigma_yield} 0 &
 		*EOS_LINEAR &
                 *END
 pair_coeff      3 3 none

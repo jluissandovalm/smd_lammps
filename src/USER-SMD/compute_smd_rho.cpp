@@ -82,26 +82,14 @@ void ComputeSMDRho::compute_peratom() {
 		vector_atom = rhoVector;
 	}
 
-//	double *vfrac = atom->vfrac;
-//	double *rmass = atom->rmass;
-//	int *mask = atom->mask;
-//	int nlocal = atom->nlocal;
-//
-//	for (int i = 0; i < nlocal; i++) {
-//		if (mask[i] & groupbit) {
-//			rhoVector[i] = rmass[i] / vfrac[i];
-//		} else {
-//			rhoVector[i] = 0.0;
-//		}
-//	}
-
-	double *rho = atom->rho;
+	double *vfrac = atom->vfrac;
+	double *rmass = atom->rmass;
 	int *mask = atom->mask;
 	int nlocal = atom->nlocal;
 
 	for (int i = 0; i < nlocal; i++) {
 		if (mask[i] & groupbit) {
-			rhoVector[i] = rho[i];
+			rhoVector[i] = rmass[i] / vfrac[i];
 		} else {
 			rhoVector[i] = 0.0;
 		}

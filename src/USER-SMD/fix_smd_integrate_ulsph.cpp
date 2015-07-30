@@ -248,7 +248,6 @@ void FixSMDIntegrateUlsph::final_integrate() {
 	double *e = atom->e;
 	double *de = atom->de;
 	double *vfrac = atom->vfrac;
-	double *rho = atom->rho;
 	double *radius = atom->radius;
 	double *contact_radius = atom->contact_radius;
 	int *mask = atom->mask;
@@ -309,9 +308,6 @@ void FixSMDIntegrateUlsph::final_integrate() {
 			D = 0.5 * (L[i] + L[i].transpose());
 			vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
 			vfrac[i] += vol_increment;
-
-			rho[i] = rmass[i] / vfrac[i];
-
 		}
 	}
 }
