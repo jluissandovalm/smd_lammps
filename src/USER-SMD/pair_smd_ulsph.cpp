@@ -289,15 +289,15 @@ void PairULSPH::PreCompute() {
 				dx0 = x0j - x0i;
 
 				// kernel and derivative
-				//spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
-				barbara_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				//barbara_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 
 				// uncorrected kernel gradient
 				g = (wfd / r) * dx;
 
 				/* build correction matrix for kernel derivatives */
 				if (gradient_correction_flag) {
-					Ktmp = g * dx.transpose();
+					Ktmp = -g * dx.transpose();
 					K[i] += jvol * Ktmp;
 				}
 
@@ -332,15 +332,9 @@ void PairULSPH::PreCompute() {
 		if (setflag[itype][itype]) {
 			if (gradient_correction_flag) {
 				pseudo_inverse_SVD(K[i]);
-
+				K[i] = LimitEigenvalues(K[i], 2.0);
 				L[i] *= K[i];
 				F[i] *= K[i];
-
-
-				double maxStrainRate = 1000.0 * radius[i] / Lookup[REFERENCE_SOUNDSPEED][itype];
-				L[i] = LimitEigenvalues(L[i], maxStrainRate);
-
-				//cout << "this is K" << endl << K[i] << endl << endl;
 			} // end if (gradient_correction[itype]) {
 
 			/*
@@ -392,7 +386,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Matrix3d S, D, V, eye;
 	eye.setIdentity();
 	int k;
-	SelfAdjointEigenSolver<Matrix3d> es;
+	SelfAdjointEigenSolver < Matrix3d > es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -528,8 +522,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 				dvint = vintj - vinti;
 
 				// kernel and derivative
-				//spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
-				barbara_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
+				//barbara_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 
 				// uncorrected kernel gradient
 				g = (wfd / r) * dx;
@@ -681,6 +675,9 @@ void PairULSPH::AssembleStressTensor() {
 			stressTensor[i].setZero();
 			vol = vfrac[i];
 			rho = rmass[i] / vfrac[i];
+			effectiveViscosity = 0.0;
+			K_eff = 0.0;
+			G_eff = 0.0;
 
 			//printf("rho = %f\n", rho);
 
@@ -806,13 +803,6 @@ void PairULSPH::AssembleStressTensor() {
 			stressTensor[i] = -newPressure * eye + newStressDeviator;
 
 			/*
-			 * kernel gradient correction
-			 */
-			if (gradient_correction_flag) {
-				stressTensor[i] = K[i] * stressTensor[i];
-			}
-
-			/*
 			 * stable timestep based on speed-of-sound
 			 */
 
@@ -824,7 +814,16 @@ void PairULSPH::AssembleStressTensor() {
 			/*
 			 * stable timestep based on viscosity
 			 */
-			dtCFL = MIN(4 * radius[i] * radius[i] * rho / effectiveViscosity, dtCFL);
+			if (viscosity[itype] != NONE) {
+				dtCFL = MIN(4 * radius[i] * radius[i] * rho / effectiveViscosity, dtCFL);
+			}
+
+			/*
+			 * kernel gradient correction
+			 */
+			if (gradient_correction_flag) {
+				stressTensor[i] *= K[i];
+			}
 		}
 		// end if (setflag[itype][itype] == 1)
 	} // end loop over nlocal
@@ -1585,6 +1584,8 @@ void *PairULSPH::extract(const char *str, int &i) {
 		return (void *) &updateFlag;
 	} else if (strcmp(str, "smd/ulsph/effective_modulus_ptr") == 0) {
 		return (void *) effm;
+	} else if (strcmp(str, "smd/ulsph/shape_matrix_ptr") == 0) {
+		return (void *) K;
 	}
 
 	return NULL;

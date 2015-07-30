@@ -67,7 +67,7 @@ fix		gfix all gravity 0.01 vector 0.0 -1. 0.0
 # An integration point fails (cannot support tension anymore) if the plastic strain exceeds 0.5.
 ####################################################################################################
 pair_style      hybrid/overlay smd/tri_surface 1.0 &
-                smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION
+                smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION
 pair_coeff      1 1 smd/ulsph *COMMON ${rho} ${c0} ${q1} ${cp} ${hg} &
                               *EOS_TAIT 2 &
 	                      *END
@@ -79,7 +79,7 @@ pair_coeff      1 2 smd/tri_surface ${contact_stiffness}
 ####################################################################################################
 # LOAD STL SURFACE
 ####################################################################################################
-fix             stl_surface_fix all smd/wall_surface boundary.stl 2 65535
+fix             stl_surface_fix all smd/wall_surface murmelbahn1.stl 2 65535
 run             0 # This is important! Always run for 0 timesteps directly after loading STL file!
 group           surface type 2
 
@@ -120,4 +120,4 @@ thermo_style custom step dt f_dtfix
 ####################################################################################################
 balance          1.1 rcb
 fix              balance_fix all balance 1000 1.1 rcb 
-run              30000
+run              60000

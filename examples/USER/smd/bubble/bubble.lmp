@@ -25,10 +25,11 @@ newton          off
 read_data       disc_adjusted.data # read a geometry.
 
 # this is an updated-Lagrangian pair style with Tait EOS and physical viscosity.
-pair_style      smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *GRADIENT_CORRECTION
+pair_style      smd/ulsph *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION
 #                           density speed_of_sound artif.visc.  heat.capacity hourglass
 pair_coeff      1 1 *COMMON ${rho}  ${c0}          ${art_visc}  0             ${hg} &
 		*EOS_TAIT 7 &
+                *VISCOSITY_NEWTON 1.0e-4 &
 	        *END
 
 compute         rho all smd/rho
@@ -38,19 +39,20 @@ compute         eint all smd/internal_energy
 compute         alleint all reduce sum c_eint
 compute         S all smd/ulsph_stress # stress tensor: xx, yy, zz, xy, xz, yz components
 compute         D all smd/ulsph_strain_rate
+compute         K all smd/ulsph_shape_matrix
 variable        etot equal ke+c_alleint+pe
 variable        amz equal angmom(all,z) # angular momentum
 
 # time integration
 timestep        ${dt} # set an initial estimate for the zero-th timestep
-fix             dtfix all smd/adjust_dt 0.1 # dynamically adjust stable timestep
-fix             integration_fix all smd/integrate_ulsph adjust_radius 1.2 10 15 # actual integration for equations of motion
+fix             dtfix all smd/adjust_dt 0.05 # dynamically adjust stable timestep
+fix             integration_fix all smd/integrate_ulsph adjust_radius 1.01 10 15 # actual integration for equations of motion
 
 variable        dumpFreq equal 10
 dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
                 fx fy fz vx vy vz c_eint &
                 c_contact_radius c_nn mol c_rho c_S[1] c_S[2] c_S[4] radius &
-                c_D[1] c_D[2] c_D[4]
+                c_D[1] c_D[2] c_D[4] c_K[1] c_K[2] c_K[4] c_K[7]
 
 dump_modify     dump_id first yes
 
@@ -62,8 +64,8 @@ thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
 #
 # Case 1: ellipsoidal deformation: angular momentum should stay zero if kernel gradient correction
 # is used, and drift away from zero if no kernel gradient is used
-# velocity        all ramp vx  -0.1 0.1 y -1.0 1.0 units box
-# velocity        all ramp vy  -0.1 0.1 x  1.0 -1.0 units box
+# velocity        all ramp vx  -0.2 0.2 y -1.0 1.0 units box
+# velocity        all ramp vy  -0.2 0.2 x  1.0 -1.0 units box
 #
 # Case 2: rotation around center of mass:  angular momentum should stay constant if kernel gradient correction
 # is used, and drift if no kernel gradient is used
@@ -71,8 +73,8 @@ thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
 #velocity        all ramp vy    -1 1 y -1.0 1.0 units box
 #
 # Case 3: make the drop of water hit a rigid wall. Angular momentum is never conserved.
-run            1000
+#run            1000
 velocity       all set 0 -1 0 units box
 fix             ywall all wall/reflect ylo -1.0
 
-run 10000
+run 30000

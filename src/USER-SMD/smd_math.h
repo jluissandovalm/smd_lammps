@@ -116,8 +116,8 @@ static inline void pseudo_inverse_SVD(Matrix3d &M) {
 //cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
 //cout << "Its singular values are:" << endl << singularValues << endl;
 
-	double pinvtoler = 1.0e-16; // 2d machining example goes unstable if this value is increased.
-	for (long row = 0; row < 3; row++) {
+	double pinvtoler = 1.0e-16; // 2d machining example goes unstable if this value is increased (1.0e-16).
+	for (int row = 0; row < 3; row++) {
 		if (singularValues(row) > pinvtoler) {
 			singularValuesInv(row) = 1.0 / singularValues(row);
 		} else {
@@ -126,6 +126,26 @@ static inline void pseudo_inverse_SVD(Matrix3d &M) {
 	}
 
 	M = svd.matrixU() * singularValuesInv.asDiagonal() * svd.matrixU().transpose();
+
+//	JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV);
+//
+//	Vector3d singularValuesInv;
+//	Vector3d singularValues = svd.singularValues();
+//
+//	//cout << "Here is the matrix V:" << endl << V * singularValues.asDiagonal() * U << endl;
+//	//cout << "Its singular values are:" << endl << singularValues << endl;
+//
+//	double pinvtoler = 1.0e-16; // 2d machining example goes unstable if this value is increased (1.0e-16).
+//	for (int row = 0; row < 3; row++) {
+//		if (singularValues(row) > pinvtoler) {
+//			singularValuesInv(row) = 1.0 / singularValues(row);
+//		} else {
+//			singularValuesInv(row) = 0.0;
+//		}
+//	}
+//
+//	M = svd.matrixU() * singularValuesInv.asDiagonal() * svd.matrixV().transpose();
+
 }
 
 /*
