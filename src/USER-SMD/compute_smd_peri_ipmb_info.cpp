@@ -1,4 +1,18 @@
 /* ----------------------------------------------------------------------
+ *
+ *                    *** Smooth Mach Dynamics ***
+ *
+ * This file is part of the USER-SMD package for LAMMPS.
+ * Copyright (2014) Georg C. Ganzenmueller, georg.ganzenmueller@emi.fhg.de
+ * Fraunhofer Ernst-Mach Institute for High-Speed Dynamics, EMI,
+ * Eckerstrasse 4, D-79104 Freiburg i.Br, Germany.
+ *
+ * This file is based on the original implementation of peridynamics in
+ * LAMMPS due to Mike Parks et al.
+ *
+ * ----------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
  LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
  http://lammps.sandia.gov, Sandia National Laboratories
  Steve Plimpton, sjplimp@sandia.gov
@@ -9,10 +23,6 @@
  the GNU General Public License.
 
  See the README file in the top-level LAMMPS directory.
- ------------------------------------------------------------------------- */
-
-/* ----------------------------------------------------------------------
- Contributing author: Mike Parks (SNL)
  ------------------------------------------------------------------------- */
 
 #include "string.h"
@@ -39,13 +49,13 @@ ComputePDGCGDamage::ComputePDGCGDamage(LAMMPS *lmp, int narg, char **arg) :
 	size_peratom_cols = 2;
 
 	nmax = 0;
-	damage = NULL;
+	output = NULL;
 }
 
 /* ---------------------------------------------------------------------- */
 
 ComputePDGCGDamage::~ComputePDGCGDamage() {
-	memory->destroy(damage);
+	memory->destroy(output);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -81,10 +91,10 @@ void ComputePDGCGDamage::compute_peratom() {
 	// grow damage array if necessary
 
 	if (atom->nlocal > nmax) {
-		memory->destroy(damage);
+		memory->destroy(output);
 		nmax = atom->nmax;
-		memory->create(damage, nmax, size_peratom_cols, "damage/atom:damage");
-		array_atom = damage;
+		memory->create(output, nmax, size_peratom_cols, "damage/atom:damage");
+		array_atom = output;
 	}
 
 	// compute damage for each atom in group
@@ -123,15 +133,15 @@ void ComputePDGCGDamage::compute_peratom() {
 			}
 
 			if (vinter[i] != 0.0)
-				damage[i][0] = 1.0 - damage_temp / vinter[i];
+				output[i][0] = 1.0 - damage_temp / vinter[i];
 			else
-				damage[i][0] = 0.0;
+				output[i][0] = 0.0;
 
-			damage[i][1] = npartner[i];
+			output[i][1] = npartner[i];
 
 		} else {
-			damage[i][0] = 0.0;
-			damage[i][1] = 0.0;
+			output[i][0] = 0.0;
+			output[i][1] = 0.0;
 		}
 	}
 }

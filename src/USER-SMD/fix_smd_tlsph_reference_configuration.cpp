@@ -1,4 +1,17 @@
 /* ----------------------------------------------------------------------
+ *
+ *                    *** Smooth Mach Dynamics ***
+ *
+ * This file is part of the USER-SMD package for LAMMPS.
+ * Copyright (2014) Georg C. Ganzenmueller, georg.ganzenmueller@emi.fhg.de
+ * Fraunhofer Ernst-Mach Institute for High-Speed Dynamics, EMI,
+ * Eckerstrasse 4, D-79104 Freiburg i.Br, Germany.
+ *
+ * This file is based on the FixShearHistory class.
+ *
+ * ----------------------------------------------------------------------- */
+
+/* ----------------------------------------------------------------------
  LAMMPS - Large-scale Atomic/Molecular Massively Parallel Simulator
  http://lammps.sandia.gov, Sandia National Laboratories
  Steve Plimpton, sjplimp@sandia.gov
@@ -67,8 +80,6 @@ FixSMD_TLSPH_ReferenceConfiguration::FixSMD_TLSPH_ReferenceConfiguration(LAMMPS 
 
 	comm_forward = 14;
 	updateFlag = 1;
-
-	//error->one(FLERR, "hurz!");
 }
 
 /* ---------------------------------------------------------------------- */

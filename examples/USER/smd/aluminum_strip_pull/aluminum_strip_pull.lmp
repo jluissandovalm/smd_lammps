@@ -110,10 +110,12 @@ compute 	S all smd/tlsph_stress # Cauchy stress tensor
 compute 	D all smd/tlsph_strain_rate
 compute 	E all smd/tlsph_strain
 compute 	nn all smd/tlsph_num_neighs # number of neighbors for each particle
+compute         shape all smd/tlsph_shape
 compute 	damage all smd/damage
 dump 		dump_id all custom 10 dump.LAMMPS id type x y z &
 			c_S[1] c_S[2] c_S[3] c_S[4] c_S[5] c_S[6] c_S[7] c_nn c_p &
 			c_E[1] c_E[2] c_E[3] c_E[4] c_E[5] c_E[6] &
+			c_shape[1] c_shape[2] c_shape[3] c_shape[4] c_shape[5] c_shape[6] c_shape[7] &
 			c_D[1] c_D[2] c_D[4] c_damage radius c_epsdot &
                         vx vy vz c_dt_atom
 dump_modify 	dump_id first yes
