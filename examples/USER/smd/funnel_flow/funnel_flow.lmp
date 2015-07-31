@@ -2,6 +2,9 @@
 #
 # ULSPH example: water flow through a complex geometry read from a .STL file
 #
+# The boundary dump file (see below) can be converted into VTK format using the conversion
+# tool dump2vtk_tris from the tools/smd directory.
+#
 # unit sytem: GPa / mm / ms
 #
 ####################################################################################################
@@ -11,7 +14,7 @@
 # MATERIAL PARAMETERS
 ####################################################################################################
 variable 	c0 equal 10.0 # speed of sound for fluid
-variable 	rho equal 1 # initial mass density
+variable 	rho equal 1.0e-6 # initial mass density
 variable        q1 equal 0.06 # standard artificial viscosity linear coefficient
 variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
 variable        hg equal 0.0 # hourglass control coefficient
@@ -99,6 +102,7 @@ compute 	nn all smd/ulsph_num_neighs # number of neighbors for each particle
 compute         contact_radius all smd/contact_radius
 compute         surface_coords surface smd/triangle_vertices
 
+
 dump 		dump_id water custom ${dumpFreq} dump.LAMMPS id type x y z vx vy vz &
 			c_rho c_nn c_contact_radius proc
 dump_modify 	dump_id first yes
@@ -112,8 +116,11 @@ dump_modify 	surf_dump first yes
 ####################################################################################################
 # STATUS OUTPUT
 ####################################################################################################
+compute         eint all smd/internal_energy
+compute         alleint all reduce sum c_eint
+variable        etot equal pe+ke+c_alleint+f_gfix # total energy of the system
 thermo 100
-thermo_style custom step dt f_dtfix
+thermo_style custom step dt f_dtfix pe ke v_etot
 
 ####################################################################################################
 # RUN SIMULATION

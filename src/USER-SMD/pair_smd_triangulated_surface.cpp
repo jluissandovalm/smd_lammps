@@ -252,7 +252,7 @@ void PairTriSurf::compute(int eflag, int vflag) {
 					 * if particle comes too close to triangle, reflect its velocity and explicitely move it away
 					 */
 
-					touch_distance = 0.2 * radius[particle];
+					touch_distance = 1.0 * radius[particle];
 					if (r < touch_distance) {
 
 						/*
@@ -267,7 +267,7 @@ void PairTriSurf::compute(int eflag, int vflag) {
 						v_old(2) = v[particle][2];
 						if (v_old.dot(normal) < 0.0) {
 							//printf("flipping velocity\n");
-							vnew = 0.5 * (-2.0 * v_old.dot(normal) * normal + v_old);
+							vnew = 1.0 * (-2.0 * v_old.dot(normal) * normal + v_old);
 							v[particle][0] = vnew(0);
 							v[particle][1] = vnew(1);
 							v[particle][2] = vnew(2);
