@@ -72,6 +72,7 @@ FixSMDIntegrateTlsph::FixSMDIntegrateTlsph(LAMMPS *lmp, int narg, char **arg) :
 		if (strcmp(arg[iarg], "xsph") == 0) {
 			xsphFlag = true;
 			if (comm->me == 0) {
+				error->one(FLERR, "XSPH is currently not available");
 				printf("... will use XSPH time integration\n");
 			}
 		} else if (strcmp(arg[iarg], "limit_velocity") == 0) {

@@ -76,6 +76,7 @@ FixSMDIntegrateUlsph::FixSMDIntegrateUlsph(LAMMPS *lmp, int narg, char **arg) :
 		if (strcmp(arg[iarg], "xsph") == 0) {
 			xsphFlag = true;
 			if (comm->me == 0) {
+				error->one(FLERR, "XSPH is currently not available");
 				printf("... will use XSPH time integration\n");
 			}
 		} else if (strcmp(arg[iarg], "adjust_radius") == 0) {
@@ -224,6 +225,9 @@ void FixSMDIntegrateUlsph::initial_integrate(int vflag) {
 				x[i][0] += dtv * vxsph_x;
 				x[i][1] += dtv * vxsph_y;
 				x[i][2] += dtv * vxsph_z;
+
+
+
 
 			} else {
 
