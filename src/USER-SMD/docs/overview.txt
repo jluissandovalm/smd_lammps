@@ -32,11 +32,11 @@ fix_smd_setvel.cpp                            | YES          |              | x 
 fix_smd_tlsph_reference_configuration.cpp     | no user ifac | N/A          | N/A      |             |                             |
 fix_smd_wall_harmonic.cpp                     | NO RELEASE   |              |          |             |                             |
 fix_smd_wall_surface.cpp                      | YES          |              |          |             |                             |
-pair_smd_hertz.cpp                            |              | x            |          |             |                             |
+pair_smd_hertz.cpp                            | YES          | x            |          |             |                             |
 pair_smd_peri_ipmb.cpp                        | NO RELEASE   |              |          |             |                             |
-pair_smd_tlsph.cpp                            |              | x            | x        |             |                             |
+pair_smd_tlsph.cpp                            | YES          | x            | x        |             |                             |
 pair_smd_triangulated_surface.cpp             | YES          |              |          |             |                             |
-pair_smd_ulsph.cpp                            |              |              |          |             |                             |
+pair_smd_ulsph.cpp                            | YES          |              |          |             |                             |
 smd_material_models.cpp                       | no user ifac |              |          |             |                             |
 smd_math.h                                    | no user ifac |              |          |             |                             |
                                               |              |              |          |             |                             |
