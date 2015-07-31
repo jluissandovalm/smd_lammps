@@ -26,7 +26,7 @@ variable        E equal 5*${c0}*${c0}*${rho_water} # Young's modulus for solid o
 variable        nu equal 0.3 # Poisson ratio for solid objects
 variable        sigma_yield equal 0.1*${E} # plastic yield stress for solid objects
 variable        hardening_parameter equal 0 # plastic hardening parameter for solid objects
-variable        contact_stiffness equal 5*${c0}^2*${rho_water} # contact force amplitude
+variable        contact_stiffness equal 2.5*${c0}^2*${rho_water} # contact force amplitude
 variable        q1 equal 0.3 # artificial viscosity
 variable        q2 equal 0.0 # artificial viscosity
 variable        Hg equal 10 # Hourglass control coefficient for solid objects
