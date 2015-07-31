@@ -825,7 +825,7 @@ void PairTlsph::AssembleStress() {
 
 				if (failureModel[itype].integration_point_wise) {
 					ComputeDamage(i, strain, T, T_damaged);
-					T = T_damaged;
+					//T = T_damaged; Do not do this, it is undefined as of now
 				}
 
 				// store rotated, "true" Cauchy stress

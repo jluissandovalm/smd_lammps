@@ -65,13 +65,13 @@ velocity        right set -${vel} 0 0 sum no units box
 # One rubber ring is linear elastic, the other rubber ring is elastic-ideal plastic.
 # Contact forces between both rubber rings are used to realize physical contact.
 ####################################################################################################
-pair_style      hybrid/overlay tlsph smd/hertz 1.0 # activate Total-Lagrangian SPH
-pair_coeff      1 1 tlsph *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
-                *LINEAR_STRENGTH &
+pair_style      hybrid/overlay smd/tlsph smd/hertz 1.0 # activate Total-Lagrangian SPH
+pair_coeff      1 1 smd/tlsph *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
+                *STRENGTH_LINEAR &
 		*EOS_LINEAR &
                 *END
-pair_coeff      2 2 tlsph *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
-                *LINEAR_PLASTICITY ${sigma_yield} 0.0 &
+pair_coeff      2 2 smd/tlsph *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
+                *STRENGTH_LINEAR_PLASTIC ${sigma_yield} 0.0 &
 		*EOS_LINEAR &
                 *END
 pair_coeff      1 1 smd/hertz ${contact_stiffness}

@@ -98,8 +98,12 @@
   pair_coeff      1 1 smd/tlsph *COMMON    ${rho} ${E} ${nu} 0.10 00.0 10  875e3                                &
                             *JOHNSON_COOK ${JC_A} ${JC_B} ${JC_N} ${JC_C} ${JC_epsdot0} ${rt} ${mt} ${JC_M} &
                             *EOS_POLYNOMIAL ${eosC0} ${eosC1} ${eosC2} ${eosC3} ${eosC4} ${eosC5} ${eosC6}  &
-                            *FAILURE_MAX_PAIRWISE_STRAIN 0.5 &
+                            *FAILURE_MAX_PAIRWISE_STRAIN 0.1 &
                             *END
+
+
+
+
 
 # - Interaction between particles type 2 (tool)
   pair_coeff      2 2 none
@@ -162,7 +166,7 @@
 
 # DEFINE TIME INTEGRATION 
   fix             dtfix tlsph smd/adjust_dt 0.1             # Estimate a stable dt
-  fix             integration_fix tlsph smd/integrate_tlsph xsph # tlsph solver
+  fix             integration_fix tlsph smd/integrate_tlsph # tlsph solver
   fix             2dfix tlsph enforce2d
 
 # PRINT PARAMETERS IN SHELL
