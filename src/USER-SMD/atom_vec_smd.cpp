@@ -1056,6 +1056,7 @@ void AtomVecSMD::data_atom(double *coord, imageint imagetmp, char **values) {
 
 	e[nlocal] = 0.0;
 
+	// TODO : remove reading x0 coords and initialize them from x, y, z
 	x0[nlocal][0] = atof(values[7]);
 	x0[nlocal][1] = atof(values[8]);
 	x0[nlocal][2] = atof(values[9]);

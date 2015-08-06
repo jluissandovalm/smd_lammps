@@ -73,7 +73,7 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	nmax = 0; // make sure no atom on this proc such that initial memory allocation is correct
 	stressTensor = L = K = NULL;
 	shepardWeight = NULL;
-	smoothVel = NULL;
+	neighborhoodVelocity = NULL;
 	numNeighs = NULL;
 	F = NULL;
 	rho = NULL;
@@ -109,7 +109,7 @@ PairULSPH::~PairULSPH() {
 		delete[] K;
 		delete[] shepardWeight;
 		delete[] c0;
-		delete[] smoothVel;
+		delete[] neighborhoodVelocity;
 		delete[] stressTensor;
 		delete[] L;
 		delete[] numNeighs;
@@ -358,8 +358,7 @@ void PairULSPH::PreCompute() {
 
 void PairULSPH::compute(int eflag, int vflag) {
 	double **x = atom->x;
-	double **v = atom->vest;
-	double **vint = atom->v; // Velocity-Verlet algorithm velocities
+	double **v = atom->v;
 	double **f = atom->f;
 	double *vfrac = atom->vfrac;
 	double *de = atom->de;
@@ -376,7 +375,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	double delVdotDelR, visc_magnitude, deltaE;
 	int *ilist, *jlist, *numneigh;
 	int **firstneigh;
-	Vector3d fi, fj, dx, dv, f_stress, g, vinti, vintj, dvint;
+	Vector3d fi, fj, dx, dv, f_stress, g;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
 	Vector3d gamma, f_hg, dx0, du_est, du;
 	double r_ref, weight, p;
@@ -402,8 +401,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 		shepardWeight = new double[nmax];
 		delete[] c0;
 		c0 = new double[nmax];
-		delete[] smoothVel;
-		smoothVel = new Vector3d[nmax];
+		delete[] neighborhoodVelocity;
+		neighborhoodVelocity = new Vector3d[nmax];
 		delete[] stressTensor;
 		stressTensor = new Matrix3d[nmax];
 		delete[] L;
@@ -421,12 +420,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 // zero accumulators
 	for (i = 0; i < nlocal; i++) {
 		shepardWeight[i] = 0.0;
-		smoothVel[i].setZero();
+		neighborhoodVelocity[i].setZero();
 		numNeighs[i] = 0;
-
-		h = 2.0 * radius[i];
-		r = 0.0;
-		spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
 	}
 
 	/*
@@ -491,7 +486,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 		for (iDim = 0; iDim < 3; iDim++) {
 			xi(iDim) = x[i][iDim];
 			vi(iDim) = v[i][iDim];
-			vinti(iDim) = vint[i][iDim];
 		}
 
 		for (jj = 0; jj < jnum; jj++) {
@@ -510,7 +504,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 				// initialize Eigen data structures from LAMMPS data structures
 				for (iDim = 0; iDim < 3; iDim++) {
 					vj(iDim) = v[j][iDim];
-					vintj(iDim) = vint[j][iDim];
 				}
 
 				r = sqrt(rSq);
@@ -519,7 +512,6 @@ void PairULSPH::compute(int eflag, int vflag) {
 
 				// distance vectors in current and reference configuration, velocity difference
 				dv = vj - vi;
-				dvint = vintj - vinti;
 
 				// kernel and derivative
 				spiky_kernel_and_derivative(h, r, domain->dimension, wf, wfd);
@@ -598,7 +590,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 
 				// accumulate smooth velocities
 				shepardWeight[i] += jvol * wf;
-				smoothVel[i] += jvol * wf * dvint;
+				neighborhoodVelocity[i] += jvol * wf * vj;
 				numNeighs[i] += 1;
 
 				if (j < nlocal) {
@@ -607,8 +599,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 					f[j][2] -= sumForces(2);
 					de[j] += deltaE;
 
-					shepardWeight[j] += ivol * wf;
-					smoothVel[j] -= ivol * wf * dvint;
+					shepardWeight[j] += wf * ivol;
+					neighborhoodVelocity[j] += ivol * wf * vi;
 					numNeighs[j] += 1;
 				}
 
@@ -625,9 +617,9 @@ void PairULSPH::compute(int eflag, int vflag) {
 		itype = type[i];
 		if (setflag[itype][itype] == 1) {
 			if (shepardWeight[i] != 0.0) {
-				smoothVel[i] /= shepardWeight[i];
+				neighborhoodVelocity[i] /= shepardWeight[i];
 			} else {
-				smoothVel[i].setZero();
+				neighborhoodVelocity[i].setZero();
 			}
 		} // end check if particle is SPH-type
 	} // end loop over i = 0 to nlocal
@@ -1570,7 +1562,7 @@ void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
 void *PairULSPH::extract(const char *str, int &i) {
 //printf("in extract\n");
 	if (strcmp(str, "smd/ulsph/smoothVel_ptr") == 0) {
-		return (void *) smoothVel;
+		return (void *) neighborhoodVelocity;
 	} else if (strcmp(str, "smd/ulsph/stressTensor_ptr") == 0) {
 		return (void *) stressTensor;
 	} else if (strcmp(str, "smd/ulsph/velocityGradient_ptr") == 0) {

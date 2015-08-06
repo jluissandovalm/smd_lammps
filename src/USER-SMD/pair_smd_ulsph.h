@@ -80,7 +80,7 @@ protected:
 	int *numNeighs;
 	Matrix3d *K;
 	double *shepardWeight, *c0, *rho;
-	Vector3d *smoothVel;
+	Vector3d *neighborhoodVelocity;
 	Matrix3d *stressTensor, *L, *F;
 
 	double dtCFL;

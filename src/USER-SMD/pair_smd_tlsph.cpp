@@ -344,6 +344,11 @@ void PairTlsph::PreCompute() {
 
 void PairTlsph::compute(int eflag, int vflag) {
 
+	if (eflag || vflag)
+		ev_setup(eflag, vflag);
+	else
+		evflag = vflag_fdotr = 0;
+
 	if (atom->nmax > nmax) {
 		nmax = atom->nmax;
 		delete[] Fdot;
@@ -447,11 +452,6 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 	float **energy_per_bond = ((FixSMD_TLSPH_ReferenceConfiguration *) modify->fix[ifix_tlsph])->energy_per_bond;
 	Matrix3d eye;
 	eye.setIdentity();
-
-	if (eflag || vflag)
-		ev_setup(eflag, vflag);
-	else
-		evflag = vflag_fdotr = 0;
 
 	/*
 	 * iterate over pairs of particles i, j and assign forces using PK1 stress tensor
@@ -2001,7 +2001,7 @@ void PairTlsph::effective_longitudinal_modulus(const int itype, const double dt,
  compute pressure. Called from AssembleStress().
  ------------------------------------------------------------------------- */
 void PairTlsph::ComputePressure(const int i, const double rho, const double mass_specific_energy, const double vol_specific_energy,
-	const double pInitial, const double d_iso, double &pFinal, double &p_rate) {
+		const double pInitial, const double d_iso, double &pFinal, double &p_rate) {
 	int *type = atom->type;
 	double dt = update->dt;
 
@@ -2160,6 +2160,5 @@ void PairTlsph::ComputeDamage(const int i, const Matrix3d strain, const Matrix3d
 //	} else { // tension: particle has reduced tensile and shear load bearing capability
 //		stress_damaged = (1.0 - damage[i]) * (-pressure * eye + Deviator(stress));
 //	}
-
 }
 

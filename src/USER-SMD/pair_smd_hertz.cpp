@@ -157,11 +157,7 @@ void PairHertz::compute(int eflag, int vflag) {
 					rSq0 = delx0 * delx0 + dely0 * dely0 + delz0 * delz0; // initial distance
 					sphCut = sph_radius[i] + sph_radius[j];
 					if (rSq0 < sphCut * sphCut) {
-						rcut = 0.5 * rcut;
-						rcutSq = rcut * rcut;
-						if (rsq > rcutSq) {
-							continue;
-						}
+						continue;
 					}
 				}
 
