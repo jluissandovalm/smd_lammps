@@ -227,6 +227,7 @@ void PairTriSurf::compute(int eflag, int vflag) {
 						stable_time_increment = MIN(stable_time_increment, dt_crit);
 
 						evdwl = r * fpair * 0.4e0 * delta; // GCG 25 April: this expression conserves total energy
+						//printf("tri interaction: r = %f, rcut=%f\n", r, radius[particle]);
 
 						fpair /= (r + 1.0e-2 * radius[particle]); // divide by r + softening and multiply with non-normalized distance vector
 
@@ -252,7 +253,7 @@ void PairTriSurf::compute(int eflag, int vflag) {
 					 * if particle comes too close to triangle, reflect its velocity and explicitely move it away
 					 */
 
-					touch_distance = 1.0 * radius[particle];
+					touch_distance = 0.1 * radius[particle];
 					if (r < touch_distance) {
 
 						/*

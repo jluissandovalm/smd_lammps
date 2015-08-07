@@ -11,40 +11,46 @@
  See the README file in the top-level LAMMPS directory.
  ------------------------------------------------------------------------- */
 
-/* ----------------------------------------------------------------------
- Contributing authors: Mike Parks (SNL), Ezwanur Rahman, J.T. Foster (UTSA)
- ------------------------------------------------------------------------- */
-
 #include "math.h"
-#include "fix_smd_wall_surface.h"
-#include "irregular.h"
+#include "stdlib.h"
+#include "string.h"
+#include "create_smd_tri_boundary.h"
 #include "atom.h"
-#include "domain.h"
-#include "force.h"
-#include "comm.h"
-#include "update.h"
-#include "neighbor.h"
-#include "neigh_list.h"
-#include "neigh_request.h"
-#include "pair.h"
-#include "lattice.h"
-#include "memory.h"
-#include "error.h"
-#include <Eigen/Eigen>
-#include <stdio.h>
-#include <iostream>
 #include "atom_vec.h"
+#include "molecule.h"
+#include "comm.h"
+#include "irregular.h"
+#include "modify.h"
+#include "force.h"
+#include "special.h"
+#include "fix.h"
 #include "compute.h"
+#include "domain.h"
+#include "lattice.h"
+#include "region.h"
 #include "input.h"
 #include "variable.h"
+#include "random_park.h"
+#include "random_mars.h"
+#include "math_extra.h"
+#include "math_const.h"
+#include "error.h"
+#include "memory.h"
+#include <Eigen/Eigen>
 
-
-using namespace LAMMPS_NS;
-using namespace FixConst;
 using namespace Eigen;
-using namespace std;
-#define DELTA 16384
+using namespace LAMMPS_NS;
+using namespace MathConst;
+
+#define BIG 1.0e30
 #define EPSILON 1.0e-6
+
+enum {
+	BOX, REGION, SINGLE, RANDOM
+};
+enum {
+	ATOM, MOLECULE
+};
 enum {
 	LAYOUT_UNIFORM, LAYOUT_NONUNIFORM, LAYOUT_TILED
 };
@@ -52,22 +58,27 @@ enum {
 
 /* ---------------------------------------------------------------------- */
 
-FixSMDWallSurface::FixSMDWallSurface(LAMMPS *lmp, int narg, char **arg) :
-		Fix(lmp, narg, arg) {
+CreateSmdTriBoundary::CreateSmdTriBoundary(LAMMPS *lmp) :
+		Pointers(lmp) {
+}
 
-	restart_global = 0;
-	restart_peratom = 0;
-	first = 1;
+/* ---------------------------------------------------------------------- */
 
-	//atom->add_callback(0);
-	//atom->add_callback(1);
+void CreateSmdTriBoundary::command(int narg, char **arg) {
+	if (domain->box_exist == 0)
+		error->all(FLERR, "Create_atoms command before simulation box is defined");
+	if (modify->nfix_restart_peratom)
+		error->all(FLERR, "Cannot create_atoms after "
+				"reading restart file with per-atom info");
 
-	if (narg != 6)
-		error->all(FLERR, "Illegal number of arguments for fix smd/wall_surface");
+	// parse arguments
 
-	filename.assign(arg[3]);
-	wall_particle_type = force->inumeric(FLERR, arg[4]);
-	wall_molecule_id = force->inumeric(FLERR, arg[5]);
+	if (narg != 3)
+		error->all(FLERR, "Illegal create_atoms command");
+
+	filename.assign(arg[0]);
+	wall_particle_type = force->inumeric(FLERR, arg[1]);
+	wall_molecule_id = force->inumeric(FLERR, arg[2]);
 	if (wall_molecule_id < 65535) {
 		error->one(FLERR, "wall molcule id must be >= 65535\n");
 	}
@@ -79,55 +90,25 @@ FixSMDWallSurface::FixSMDWallSurface(LAMMPS *lmp, int narg, char **arg) :
 		printf("fix smd/wall_surface has molecule id %d \n", wall_molecule_id);
 		printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
 	}
-}
 
-/* ---------------------------------------------------------------------- */
+	// error checks
 
-FixSMDWallSurface::~FixSMDWallSurface() {
-	// unregister this fix so atom class doesn't invoke it any more
+	if ((wall_particle_type <= 0) || (wall_particle_type > atom->ntypes))
+		error->all(FLERR, "Invalid atom type in create_atoms command");
 
-	//atom->delete_callback(id, 0);
-	//atom->delete_callback(id, 1);
-}
+	// set bounds for my proc in sublo[3] & subhi[3]
+	// if periodic and style = BOX or REGION, i.e. using lattice:
+	//   should create exactly 1 atom when 2 images are both "on" the boundary
+	//   either image may be slightly inside/outside true box due to round-off
+	//   if I am lo proc, decrement lower bound by EPSILON
+	//     this will insure lo image is created
+	//   if I am hi proc, decrement upper bound by 2.0*EPSILON
+	//     this will insure hi image is not created
+	//   thus insertion box is EPSILON smaller than true box
+	//     and is shifted away from true boundary
+	//     which is where atoms are likely to be generated
 
-/* ---------------------------------------------------------------------- */
-
-int FixSMDWallSurface::setmask() {
-	int mask = 0;
-	return mask;
-}
-
-/* ---------------------------------------------------------------------- */
-
-void FixSMDWallSurface::init() {
-	if (!first)
-		return;
-}
-
-/* ----------------------------------------------------------------------
- For minimization: setup as with dynamics
- ------------------------------------------------------------------------- */
-
-void FixSMDWallSurface::min_setup(int vflag) {
-	setup(vflag);
-}
-
-/* ----------------------------------------------------------------------
- create initial list of neighbor partners via call to neighbor->build()
- must be done in setup (not init) since fix init comes before neigh init
- ------------------------------------------------------------------------- */
-
-void FixSMDWallSurface::setup(int vflag) {
-
-	if (!first)
-		return;
-	first = 0;
-
-	// set bounds for my proc
-	// if periodic and I am lo/hi proc, adjust bounds by EPSILON
-	// insures all data atoms will be owned even with round-off
-
-	int triclinic = domain->triclinic;
+	triclinic = domain->triclinic;
 
 	double epsilon[3];
 	if (triclinic)
@@ -159,50 +140,115 @@ void FixSMDWallSurface::setup(int vflag) {
 			if (comm->myloc[0] == 0)
 				sublo[0] -= epsilon[0];
 			if (comm->myloc[0] == comm->procgrid[0] - 1)
-				subhi[0] += epsilon[0];
+				subhi[0] -= 2.0 * epsilon[0];
 		}
 		if (domain->yperiodic) {
 			if (comm->myloc[1] == 0)
 				sublo[1] -= epsilon[1];
 			if (comm->myloc[1] == comm->procgrid[1] - 1)
-				subhi[1] += epsilon[1];
+				subhi[1] -= 2.0 * epsilon[1];
 		}
 		if (domain->zperiodic) {
 			if (comm->myloc[2] == 0)
 				sublo[2] -= epsilon[2];
 			if (comm->myloc[2] == comm->procgrid[2] - 1)
-				subhi[2] += epsilon[2];
+				subhi[2] -= 2.0 * epsilon[2];
 		}
-
 	} else {
 		if (domain->xperiodic) {
 			if (comm->mysplit[0][0] == 0.0)
 				sublo[0] -= epsilon[0];
 			if (comm->mysplit[0][1] == 1.0)
-				subhi[0] += epsilon[0];
+				subhi[0] -= 2.0 * epsilon[0];
 		}
 		if (domain->yperiodic) {
 			if (comm->mysplit[1][0] == 0.0)
 				sublo[1] -= epsilon[1];
 			if (comm->mysplit[1][1] == 1.0)
-				subhi[1] += epsilon[1];
+				subhi[1] -= 2.0 * epsilon[1];
 		}
 		if (domain->zperiodic) {
 			if (comm->mysplit[2][0] == 0.0)
 				sublo[2] -= epsilon[2];
 			if (comm->mysplit[2][1] == 1.0)
-				subhi[2] += epsilon[2];
+				subhi[2] -= 2.0 * epsilon[2];
 		}
 	}
 
+	// read triangles and create particles
+
+	bigint natoms_previous = atom->natoms;
+	int nlocal_previous = atom->nlocal;
+
 	read_triangles(0);
+
+	// invoke set_arrays() for fixes/computes/variables
+	//   that need initialization of attributes of new atoms
+	// don't use modify->create_attributes() since would be inefficient
+	//   for large number of atoms
+	// note that for typical early use of create_atoms,
+	//   no fixes/computes/variables exist yet
+
+	int nlocal = atom->nlocal;
+	for (int m = 0; m < modify->nfix; m++) {
+		Fix *fix = modify->fix[m];
+		if (fix->create_attribute)
+			for (int i = nlocal_previous; i < nlocal; i++)
+				fix->set_arrays(i);
+	}
+	for (int m = 0; m < modify->ncompute; m++) {
+		Compute *compute = modify->compute[m];
+		if (compute->create_attribute)
+			for (int i = nlocal_previous; i < nlocal; i++)
+				compute->set_arrays(i);
+	}
+	for (int i = nlocal_previous; i < nlocal; i++)
+		input->variable->set_arrays(i);
+
+	// set new total # of atoms and error check
+
+	bigint nblocal = atom->nlocal;
+	MPI_Allreduce(&nblocal, &atom->natoms, 1, MPI_LMP_BIGINT, MPI_SUM, world);
+	if (atom->natoms < 0 || atom->natoms >= MAXBIGINT)
+		error->all(FLERR, "Too many total atoms");
+
+	// add IDs for newly created atoms
+	// check that atom IDs are valid
+
+	if (atom->tag_enable)
+		atom->tag_extend();
+	atom->tag_check();
+
+	// create global mapping of atoms
+	// zero nghost in case are adding new atoms to existing atoms
+
+	if (atom->map_style) {
+		atom->nghost = 0;
+		atom->map_init();
+		atom->map_set();
+	}
+
+	// print status
+	if (comm->me == 0) {
+		if (screen) {
+			printf("... fix smd/wall_surface finished reading triangulated surface\n");
+			fprintf(screen, "fix smd/wall_surface created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
+			printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
+		}
+		if (logfile) {
+			fprintf(logfile, "... fix smd/wall_surface finished reading triangulated surface\n");
+			fprintf(logfile, "fix smd/wall_surface created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
+			fprintf(logfile, ">>========>>========>>========>>========>>========>>========>>========>>========\n");
+		}
+	}
+
 }
 
 /* ----------------------------------------------------------------------
  function to determine number of values in a text line
  ------------------------------------------------------------------------- */
 
-int FixSMDWallSurface::count_words(const char *line) {
+int CreateSmdTriBoundary::count_words(const char *line) {
 	int n = strlen(line) + 1;
 	char *copy;
 	memory->create(copy, n, "atom:copy");
@@ -228,7 +274,7 @@ int FixSMDWallSurface::count_words(const char *line) {
  size of atom nlocal's restart data
  ------------------------------------------------------------------------- */
 
-void FixSMDWallSurface::read_triangles(int pass) {
+void CreateSmdTriBoundary::read_triangles(int pass) {
 
 	double coord[3];
 
@@ -469,67 +515,6 @@ void FixSMDWallSurface::read_triangles(int pass) {
 
 	}
 
-	// invoke set_arrays() for fixes/computes/variables
-	//   that need initialization of attributes of new atoms
-	// don't use modify->create_attributes() since would be inefficient
-	//   for large number of atoms
-	// note that for typical early use of create_atoms,
-	//   no fixes/computes/variables exist yet
-
-	int nlocal = atom->nlocal;
-	for (int m = 0; m < modify->nfix; m++) {
-		Fix *fix = modify->fix[m];
-		if (fix->create_attribute)
-			for (int i = nlocal_previous; i < nlocal; i++)
-				fix->set_arrays(i);
-	}
-	for (int m = 0; m < modify->ncompute; m++) {
-		Compute *compute = modify->compute[m];
-		if (compute->create_attribute)
-			for (int i = nlocal_previous; i < nlocal; i++)
-				compute->set_arrays(i);
-	}
-	for (int i = nlocal_previous; i < nlocal; i++)
-		input->variable->set_arrays(i);
-
-	// set new total # of atoms and error check
-
-	bigint nblocal = atom->nlocal;
-	MPI_Allreduce(&nblocal, &atom->natoms, 1, MPI_LMP_BIGINT, MPI_SUM, world);
-	if (atom->natoms < 0 || atom->natoms >= MAXBIGINT)
-		error->all(FLERR, "Too many total atoms");
-
-	// add IDs for newly created atoms
-	// check that atom IDs are valid
-
-	if (atom->tag_enable)
-		atom->tag_extend();
-	atom->tag_check();
-
-	// create global mapping of atoms
-	// zero nghost in case are adding new atoms to existing atoms
-
-	if (atom->map_style) {
-		atom->nghost = 0;
-		atom->map_init();
-		atom->map_set();
-	}
-
-	// print status
-	if (comm->me == 0) {
-		if (screen) {
-			printf("... fix smd/wall_surface finished reading triangulated surface\n");
-			fprintf(screen, "fix smd/wall_surface created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
-			printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
-		}
-		if (logfile) {
-			fprintf(logfile, "... fix smd/wall_surface finished reading triangulated surface\n");
-			fprintf(logfile, "fix smd/wall_surface created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
-			fprintf(logfile, ">>========>>========>>========>>========>>========>>========>>========>>========\n");
-		}
-	}
-
 	delete[] vert;
 	fclose(fp);
 }
-

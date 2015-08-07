@@ -223,9 +223,9 @@ void FixSMDIntegrateUlsph::initial_integrate(int vflag) {
 				x[i][1] += dtv * vxsph_y;
 				x[i][2] += dtv * vxsph_z;
 
-				vest[i][0] = vxsph_x + dtfm * f[i][0];
-				vest[i][1] = vxsph_y + dtfm * f[i][1];
-				vest[i][2] = vxsph_z + dtfm * f[i][2];
+				vest[i][0] = vxsph_x;// + dtfm * f[i][0];
+				vest[i][1] = vxsph_y;// + dtfm * f[i][1];
+				vest[i][2] = vxsph_z;// + dtfm * f[i][2];
 
 				// extrapolate velocity from half- to full-step
 //				vest[i][0] = v[i][0] + dtfm * f[i][0];

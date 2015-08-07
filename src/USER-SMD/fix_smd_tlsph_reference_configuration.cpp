@@ -253,6 +253,9 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 			dx(2) = x0[i][2] - x0[j][2];
 			r = dx.norm();
 			h = radius[i] + radius[j];
+			if(tag[i] == 1284) {
+				printf("radii for 1284 are: %f %f\n", radius[i], radius[j]);
+			}
 
 			if (r <= h) {
 				npartner[i]++;
@@ -263,9 +266,17 @@ void FixSMD_TLSPH_ReferenceConfiguration::setup(int vflag) {
 		}
 	}
 
+
 	maxpartner = 0;
-	for (i = 0; i < nlocal; i++)
+	for (i = 0; i < nlocal; i++) {
+
+		if (tag[i] == 1284) {
+			printf("NN = %d\n", npartner[i]);
+			//error->one(FLERR,"");
+		}
+
 		maxpartner = MAX(maxpartner, npartner[i]);
+	}
 	int maxall;
 	MPI_Allreduce(&maxpartner, &maxall, 1, MPI_INT, MPI_MAX, world);
 	maxpartner = maxall;
@@ -410,7 +421,7 @@ int FixSMD_TLSPH_ReferenceConfiguration::pack_exchange(int i, double *buf) {
 // NOTE: how do I know comm buf is big enough if extreme # of touching neighs
 // Comm::BUFEXTRA may need to be increased
 
-//printf("pack_exchange ...\n");
+	//printf("pack_exchange ...\n");
 
 	int m = 0;
 	buf[m++] = npartner[i];

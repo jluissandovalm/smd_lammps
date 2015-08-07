@@ -15,6 +15,7 @@
 #define LMP_ATOM_H
 
 #include "pointers.h"
+#include "error.h"
 
 namespace LAMMPS_NS {
 
@@ -256,6 +257,12 @@ class Atom : protected Pointers {
   // return -1 if no map defined
 
   inline int map(tagint global) {
+	  //printf("inquiring local id for tag %d\n", global);
+//	  if (global >= map_maxarray + 1) {
+//		  printf("inquiring local id for tag %d but size is only %d\n", global, map_maxarray);
+//		  //error->one(FLERR, "");
+//	  }
+
     if (map_style == 1) return map_array[global];
     else if (map_style == 2) return map_find_hash(global);
     else return -1;
