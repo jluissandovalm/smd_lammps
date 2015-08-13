@@ -50,10 +50,10 @@ class FixSMDIntegrateUlsph : public Fix {
  protected:
   double dtv,dtf, vlimit, vlimitsq;;
   int mass_require;
-  bool xsphFlag;
   bool adjust_radius_flag;
   double adjust_radius_factor;
   int min_nn, max_nn; // number of SPH neighbors should lie within this interval
+  double smooth_density_field_factor;
 
   class Pair *pair;
 };

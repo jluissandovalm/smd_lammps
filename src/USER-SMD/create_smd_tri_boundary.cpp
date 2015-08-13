@@ -85,10 +85,10 @@ void CreateSmdTriBoundary::command(int narg, char **arg) {
 
 	if (comm->me == 0) {
 		printf("\n>>========>>========>>========>>========>>========>>========>>========>>========\n");
-		printf("fix smd/wall_surface reads trianglulated surface from file: %s\n", filename.c_str());
-		printf("fix smd/wall_surface has particle type %d \n", wall_particle_type);
-		printf("fix smd/wall_surface has molecule id %d \n", wall_molecule_id);
-		printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
+		printf("reading trianglulated surface from file: %s\n", filename.c_str());
+		printf("... triangulated surface has particle type %d \n", wall_particle_type);
+		printf("... triangulated surface has molecule id %d \n", wall_molecule_id);
+
 	}
 
 	// error checks
@@ -231,13 +231,13 @@ void CreateSmdTriBoundary::command(int narg, char **arg) {
 	// print status
 	if (comm->me == 0) {
 		if (screen) {
-			printf("... fix smd/wall_surface finished reading triangulated surface\n");
-			fprintf(screen, "fix smd/wall_surface created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
+			printf("... finished reading triangulated surface\n");
+			fprintf(screen, "... created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
 			printf(">>========>>========>>========>>========>>========>>========>>========>>========\n");
 		}
 		if (logfile) {
-			fprintf(logfile, "... fix smd/wall_surface finished reading triangulated surface\n");
-			fprintf(logfile, "fix smd/wall_surface created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
+			fprintf(logfile, "... finished reading triangulated surface\n");
+			fprintf(logfile, "... created " BIGINT_FORMAT " atoms\n", atom->natoms - natoms_previous);
 			fprintf(logfile, ">>========>>========>>========>>========>>========>>========>>========>>========\n");
 		}
 	}
@@ -283,7 +283,6 @@ void CreateSmdTriBoundary::read_triangles(int pass) {
 	int m;
 	int me;
 
-	bigint natoms_previous = atom->natoms;
 	Vector3d *vert;
 	vert = new Vector3d[3];
 	Vector3d normal, center;
@@ -298,19 +297,10 @@ void CreateSmdTriBoundary::read_triangles(int pass) {
 	MPI_Comm_rank(world, &me);
 	if (me == 0) {
 		if (screen) {
-			if (pass == 0) {
-				printf("\n>>========>>========>>========>>========>>========>>========>>========>>========\n");
-				fprintf(screen, "  scanning triangle pairs ...\n");
-			} else {
-				fprintf(screen, "  reading triangle pairs ...\n");
-			}
+				fprintf(screen, "... reading triangles ...\n");
 		}
 		if (logfile) {
-			if (pass == 0) {
-				fprintf(logfile, "  scanning triangle pairs ...\n");
-			} else {
-				fprintf(logfile, "  reading triangle pairs ...\n");
-			}
+				fprintf(logfile, "... reading triangles ...\n");
 		}
 	}
 
@@ -332,21 +322,6 @@ void CreateSmdTriBoundary::read_triangles(int pass) {
 		sprintf(str, "first line of file is incorrect");
 		error->one(FLERR, str);
 	}
-
-//	values = new char*[nwords];
-//	values[0] = strtok(line, " \t\n\r\f");
-//	if (values[0] == NULL)
-//		error->all(FLERR, "Incorrect atom format in data file");
-//	for (m = 1; m < nwords; m++) {
-//		values[m] = strtok(NULL, " \t\n\r\f");
-//		if (values[m] == NULL)
-//			error->all(FLERR, "Incorrect atom format in data file");
-//	}
-//	delete[] values;
-//
-//	if (comm->me == 0) {
-//		cout << "STL file contains solid body with name: " << values[1] << endl;
-//	}
 
 	// iterate over STL facets util end of body is reached
 
@@ -493,8 +468,8 @@ void CreateSmdTriBoundary::read_triangles(int pass) {
 			double **smd_data_9 = atom->smd_data_9;
 			double **x0 = atom->x0;
 
-			radius[ilocal] = 0.1234; //r; //ilocal;
-			contact_radius[ilocal] = r; //ilocal;
+			radius[ilocal] = r;
+			contact_radius[ilocal] = r;
 			mol[ilocal] = wall_molecule_id;
 			type[ilocal] = wall_particle_type;
 			x0[ilocal][0] = normal(0);

@@ -127,6 +127,10 @@ static inline void pseudo_inverse_SVD(Matrix3d &M) {
 
 	M = svd.matrixU() * singularValuesInv.asDiagonal() * svd.matrixU().transpose();
 
+	/*
+	 * commented version below is for non-symmetric matrices
+	 */
+
 //	JacobiSVD < Matrix3d > svd(M, ComputeFullU | ComputeFullV);
 //
 //	Vector3d singularValuesInv;
@@ -146,6 +150,35 @@ static inline void pseudo_inverse_SVD(Matrix3d &M) {
 //
 //	M = svd.matrixU() * singularValuesInv.asDiagonal() * svd.matrixV().transpose();
 
+}
+
+
+/*
+ * specialized SVD for symmetric input matrices.
+ * limits the eigenvalues to the supplied limit value.
+ */
+
+static inline void pseudo_inverse_SVD_limit_eigenvalue(Matrix3d &M, const double limit) {
+
+	JacobiSVD<Matrix3d> svd(M, ComputeFullU); // one Eigevector base is sufficient because matrix is square and symmetric
+
+	Vector3d singularValuesInv;
+	Vector3d singularValues = svd.singularValues();
+
+	double pinvtoler = 1.0e-16; // 2d machining example goes unstable if this value is increased (1.0e-16).
+	for (int row = 0; row < 3; row++) {
+		if (singularValues(row) > pinvtoler) {
+			singularValuesInv(row) = 1.0 / singularValues(row);
+			if (singularValuesInv(row) > limit)  {
+				printf("eigenvalue is %f\n", singularValuesInv(row));
+				singularValuesInv(row) = limit;
+			}
+		} else {
+			singularValuesInv(row) = 0.0;
+		}
+	}
+
+	M = svd.matrixU() * singularValuesInv.asDiagonal() * svd.matrixU().transpose();
 }
 
 /*

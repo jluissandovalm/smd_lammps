@@ -250,10 +250,10 @@ void PairTriSurf::compute(int eflag, int vflag) {
 					}
 
 					/*
-					 * if particle comes too close to triangle, reflect its velocity and explicitely move it away
+					 * if particle comes too close to triangle, reflect its velocity and explicitly move it away
 					 */
 
-					touch_distance = 0.1 * radius[particle];
+					touch_distance = 0.5 * radius[particle];
 					if (r < touch_distance) {
 
 						/*

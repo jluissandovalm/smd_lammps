@@ -73,16 +73,14 @@ PairULSPH::PairULSPH(LAMMPS *lmp) :
 	nmax = 0; // make sure no atom on this proc such that initial memory allocation is correct
 	stressTensor = L = K = NULL;
 	shepardWeight = NULL;
-	neighborhoodVelocity = NULL;
 	numNeighs = NULL;
-	F = NULL;
 	rho = NULL;
-	effm = NULL;
+	neighborhoodRho = NULL;
 
 	velocity_gradient_required = false; // turn off computation of velocity gradient by default
 	density_summation = velocity_gradient = false;
 
-	comm_forward = 18; // this pair style communicates 18 doubles to ghost atoms
+	comm_forward = 8; // this pair style communicates 8 doubles to ghost atoms
 	updateFlag = 0;
 }
 
@@ -109,13 +107,11 @@ PairULSPH::~PairULSPH() {
 		delete[] K;
 		delete[] shepardWeight;
 		delete[] c0;
-		delete[] neighborhoodVelocity;
 		delete[] stressTensor;
 		delete[] L;
 		delete[] numNeighs;
-		delete[] F;
 		delete[] rho;
-		delete[] effm;
+		delete[] neighborhoodRho;
 
 	}
 }
@@ -239,7 +235,6 @@ void PairULSPH::PreCompute() {
 				K[i].setIdentity();
 			}
 			L[i].setZero();
-			F[i].setZero();
 		}
 	}
 
@@ -305,11 +300,6 @@ void PairULSPH::PreCompute() {
 				Ltmp = -dv * g.transpose();
 				L[i] += jvol * Ltmp;
 
-				// deformation gradient F in Eulerian frame
-				du = dx - dx0;
-				Ftmp = dv * g.transpose();
-				F[i] += jvol * Ftmp;
-
 				if (j < nlocal) {
 
 					if (gradient_correction_flag) {
@@ -317,10 +307,10 @@ void PairULSPH::PreCompute() {
 					}
 
 					L[j] += ivol * Ltmp;
-					F[j] += ivol * Ftmp;
 				}
 			} // end if check distance
 		} // end loop over j
+
 	} // end loop over i
 
 	/*
@@ -331,10 +321,8 @@ void PairULSPH::PreCompute() {
 		itype = type[i];
 		if (setflag[itype][itype]) {
 			if (gradient_correction_flag) {
-				pseudo_inverse_SVD(K[i]);
-				K[i] = LimitEigenvalues(K[i], 2.0);
+				pseudo_inverse_SVD_limit_eigenvalue(K[i], 1000.0);
 				L[i] *= K[i];
-				F[i] *= K[i];
 			} // end if (gradient_correction[itype]) {
 
 			/*
@@ -370,22 +358,21 @@ void PairULSPH::compute(int eflag, int vflag) {
 	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int i, j, ii, jj, jnum, itype, jtype, iDim, inum;
-	double r, wf, wfd, h, rSq, ivol, jvol;
+	double r, wf, wfd, h, rSq, ivol, jvol, irho, jrho;
 	double mu_ij, c_ij, rho_ij;
 	double delVdotDelR, visc_magnitude, deltaE;
 	int *ilist, *jlist, *numneigh;
 	int **firstneigh;
 	Vector3d fi, fj, dx, dv, f_stress, g;
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
-	Vector3d gamma, f_hg, dx0, du_est, du;
+	Vector3d gamma, dx0, du_est, du;
 	double r_ref, weight, p;
-	//int periodic = (domain->xperiodic || domain->yperiodic || domain->zperiodic);
 
 	double ini_dist;
 	Matrix3d S, D, V, eye;
 	eye.setIdentity();
 	int k;
-	SelfAdjointEigenSolver < Matrix3d > es;
+	SelfAdjointEigenSolver<Matrix3d> es;
 
 	if (eflag || vflag)
 		ev_setup(eflag, vflag);
@@ -401,27 +388,24 @@ void PairULSPH::compute(int eflag, int vflag) {
 		shepardWeight = new double[nmax];
 		delete[] c0;
 		c0 = new double[nmax];
-		delete[] neighborhoodVelocity;
-		neighborhoodVelocity = new Vector3d[nmax];
 		delete[] stressTensor;
 		stressTensor = new Matrix3d[nmax];
 		delete[] L;
 		L = new Matrix3d[nmax];
 		delete[] numNeighs;
 		numNeighs = new int[nmax];
-		delete[] F;
-		F = new Matrix3d[nmax];
 		delete[] rho;
 		rho = new double[nmax];
-		delete[] effm;
-		effm = new double[nmax];
+		delete[] neighborhoodRho;
+		neighborhoodRho = new double[nmax];
+
 	}
 
 // zero accumulators
 	for (i = 0; i < nlocal; i++) {
 		shepardWeight[i] = 0.0;
-		neighborhoodVelocity[i].setZero();
 		numNeighs[i] = 0;
+		neighborhoodRho[i] = 0.0;
 	}
 
 	/*
@@ -481,6 +465,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 		jlist = firstneigh[i];
 		jnum = numneigh[i];
 		ivol = vfrac[i];
+		irho = rmass[i] / ivol;
 
 		// initialize Eigen data structures from LAMMPS data structures
 		for (iDim = 0; iDim < 3; iDim++) {
@@ -509,6 +494,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 				r = sqrt(rSq);
 				jtype = type[j];
 				jvol = vfrac[j];
+				jrho = rmass[j] / jvol;
 
 				// distance vectors in current and reference configuration, velocity difference
 				dv = vj - vi;
@@ -566,18 +552,12 @@ void PairULSPH::compute(int eflag, int vflag) {
 				LimitDoubleMagnitude(delVdotDelR, 1.1 * c_ij);
 
 				mu_ij = h * delVdotDelR / (r + 0.1 * h); // units: [m * m/s / m = m/s]
-				rho_ij = 0.5 * (rmass[i] / ivol + rmass[j] / jvol);
+				rho_ij = 0.5 * (irho + jrho);
 				visc_magnitude = 0.5 * (Q1[itype] + Q1[jtype]) * c_ij * mu_ij / rho_ij;
 				f_visc = -rmass[i] * rmass[j] * visc_magnitude * g;
 
-				if ((Lookup[HOURGLASS_CONTROL_AMPLITUDE][itype] > 0.0) && (Lookup[HOURGLASS_CONTROL_AMPLITUDE][jtype] > 0.0)) {
-					f_hg = ComputeHourglassForce(i, itype, j, jtype, dv, dx, g, c_ij, mu_ij, rho_ij);
-
-				} else {
-					f_hg.setZero();
-				}
-
-				sumForces = f_stress + f_visc + f_hg;
+				// sum stress and viscous forces
+				sumForces = f_stress + f_visc;
 
 				// energy rate -- project velocity onto force vector
 				deltaE = sumForces.dot(dv);
@@ -590,8 +570,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 
 				// accumulate smooth velocities
 				shepardWeight[i] += jvol * wf;
-				neighborhoodVelocity[i] += jvol * wf * vj;
 				numNeighs[i] += 1;
+				neighborhoodRho[i] += wf * rmass[j];
 
 				if (j < nlocal) {
 					f[j][0] -= sumForces(0);
@@ -600,8 +580,8 @@ void PairULSPH::compute(int eflag, int vflag) {
 					de[j] += deltaE;
 
 					shepardWeight[j] += wf * ivol;
-					neighborhoodVelocity[j] += ivol * wf * vi;
 					numNeighs[j] += 1;
+					neighborhoodRho[j] += wf * rmass[i];
 				}
 
 				// tally atomistic stress tensor
@@ -617,9 +597,9 @@ void PairULSPH::compute(int eflag, int vflag) {
 		itype = type[i];
 		if (setflag[itype][itype] == 1) {
 			if (shepardWeight[i] != 0.0) {
-				neighborhoodVelocity[i] /= shepardWeight[i];
+				neighborhoodRho[i] /= shepardWeight[i];
 			} else {
-				neighborhoodVelocity[i].setZero();
+				neighborhoodRho[i] = 0.0;
 			}
 		} // end check if particle is SPH-type
 	} // end loop over i = 0 to nlocal
@@ -670,8 +650,7 @@ void PairULSPH::AssembleStressTensor() {
 			effectiveViscosity = 0.0;
 			K_eff = 0.0;
 			G_eff = 0.0;
-
-			//printf("rho = %f\n", rho);
+			D = 0.5 * (L[i] + L[i].transpose());
 
 			switch (eos[itype]) {
 			default:
@@ -718,7 +697,6 @@ void PairULSPH::AssembleStressTensor() {
 				oldStressDeviator(2, 0) = oldStressDeviator(0, 2);
 				oldStressDeviator(2, 1) = oldStressDeviator(1, 2);
 
-				D = 0.5 * (L[i] + L[i].transpose());
 				W = 0.5 * (L[i] - L[i].transpose()); // spin tensor:: need this for Jaumann rate
 				d_dev = Deviator(D);
 
@@ -747,8 +725,6 @@ void PairULSPH::AssembleStressTensor() {
 					break;
 				}
 
-				//double m = effective_longitudinal_modulus(itype, dt, d_iso, p_rate, d_dev, stressRate_dev, damage);
-
 				StressRateDevJaumann = stressRateDev - W * oldStressDeviator + oldStressDeviator * W;
 				newStressDeviator = oldStressDeviator + dt * StressRateDevJaumann;
 
@@ -766,7 +742,6 @@ void PairULSPH::AssembleStressTensor() {
 			} // end if (strength[itype] != NONE)
 
 			if (viscosity[itype] != NONE) {
-				D = 0.5 * (L[i] + L[i].transpose());
 				d_dev = Deviator(D);
 
 				switch (viscosity[itype]) {
@@ -795,27 +770,31 @@ void PairULSPH::AssembleStressTensor() {
 			stressTensor[i] = -newPressure * eye + newStressDeviator;
 
 			/*
+			 * kernel gradient correction
+			 */
+			double scale = 1.0;
+			if (gradient_correction_flag) {
+				SelfAdjointEigenSolver<Matrix3d> es;
+				es.compute(K[i]);
+				scale = es.eigenvalues().maxCoeff();
+				stressTensor[i] *= K[i];
+			}
+
+			/*
 			 * stable timestep based on speed-of-sound
 			 */
 
-			M = K_eff + 4.0 * G_eff / 3.0;
+			M = scale * K_eff + 4.0 * G_eff / 3.0;
 			p_wave_speed = sqrt(M / rho);
-			effm[i] = G_eff;
 			dtCFL = MIN(2 * radius[i] / p_wave_speed, dtCFL);
 
 			/*
 			 * stable timestep based on viscosity
 			 */
 			if (viscosity[itype] != NONE) {
-				dtCFL = MIN(4 * radius[i] * radius[i] * rho / effectiveViscosity, dtCFL);
+				dtCFL = MIN(4 * radius[i] * radius[i] * rho / (scale * effectiveViscosity), dtCFL);
 			}
 
-			/*
-			 * kernel gradient correction
-			 */
-			if (gradient_correction_flag) {
-				stressTensor[i] *= K[i];
-			}
 		}
 		// end if (setflag[itype][itype] == 1)
 	} // end loop over nlocal
@@ -1486,7 +1465,6 @@ double PairULSPH::memory_usage() {
 
 int PairULSPH::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, int *pbc) {
 	double *vfrac = atom->vfrac;
-	double *eff_plastic_strain = atom->eff_plastic_strain;
 	int i, j, m;
 
 //printf("packing comm\n");
@@ -1502,18 +1480,6 @@ int PairULSPH::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, in
 		buf[m++] = stressTensor[j](0, 1);
 		buf[m++] = stressTensor[j](0, 2);
 		buf[m++] = stressTensor[j](1, 2); // 2 + 6 = 8
-
-		buf[m++] = F[j](0, 0); // F is not symmetric
-		buf[m++] = F[j](0, 1);
-		buf[m++] = F[j](0, 2);
-		buf[m++] = F[j](1, 0);
-		buf[m++] = F[j](1, 1);
-		buf[m++] = F[j](1, 2);
-		buf[m++] = F[j](2, 0);
-		buf[m++] = F[j](2, 1);
-		buf[m++] = F[j](2, 2); // 8 + 9 = 17
-
-		buf[m++] = eff_plastic_strain[j]; // 18
 	}
 	return m;
 }
@@ -1522,7 +1488,6 @@ int PairULSPH::pack_forward_comm(int n, int *list, double *buf, int pbc_flag, in
 
 void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
 	double *vfrac = atom->vfrac;
-	double *eff_plastic_strain = atom->eff_plastic_strain;
 	int i, m, last;
 
 	m = 0;
@@ -1540,18 +1505,6 @@ void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
 		stressTensor[i](1, 0) = stressTensor[i](0, 1);
 		stressTensor[i](2, 0) = stressTensor[i](0, 2);
 		stressTensor[i](2, 1) = stressTensor[i](1, 2);
-
-		F[i](0, 0) = buf[m++];
-		F[i](0, 1) = buf[m++];
-		F[i](0, 2) = buf[m++];
-		F[i](1, 0) = buf[m++];
-		F[i](1, 1) = buf[m++];
-		F[i](1, 2) = buf[m++];
-		F[i](2, 0) = buf[m++];
-		F[i](2, 1) = buf[m++];
-		F[i](2, 2) = buf[m++]; // 8 + 9 = 17
-
-		eff_plastic_strain[i] = buf[m++]; // 18
 	}
 }
 
@@ -1560,22 +1513,18 @@ void PairULSPH::unpack_forward_comm(int n, int first, double *buf) {
  */
 
 void *PairULSPH::extract(const char *str, int &i) {
-//printf("in extract\n");
-	if (strcmp(str, "smd/ulsph/smoothVel_ptr") == 0) {
-		return (void *) neighborhoodVelocity;
-	} else if (strcmp(str, "smd/ulsph/stressTensor_ptr") == 0) {
+	if (strcmp(str, "smd/ulsph/stressTensor_ptr") == 0) {
 		return (void *) stressTensor;
 	} else if (strcmp(str, "smd/ulsph/velocityGradient_ptr") == 0) {
 		return (void *) L;
 	} else if (strcmp(str, "smd/ulsph/numNeighs_ptr") == 0) {
 		return (void *) numNeighs;
 	} else if (strcmp(str, "smd/ulsph/dtCFL_ptr") == 0) {
-//printf("dtcfl = %f\n", dtCFL);
 		return (void *) &dtCFL;
 	} else if (strcmp(str, "smd/ulsph/updateFlag_ptr") == 0) {
 		return (void *) &updateFlag;
-	} else if (strcmp(str, "smd/ulsph/effective_modulus_ptr") == 0) {
-		return (void *) effm;
+	} else if (strcmp(str, "smd/ulsph/neighborhoodRho_ptr") == 0) {
+		return (void *) neighborhoodRho;
 	} else if (strcmp(str, "smd/ulsph/shape_matrix_ptr") == 0) {
 		return (void *) K;
 	}
@@ -1616,32 +1565,3 @@ double PairULSPH::effective_shear_modulus(const Matrix3d d_dev, const Matrix3d d
 
 }
 
-/* ----------------------------------------------------------------------
- hourglass force for updated Lagrangian SPH
- input: particles indices i, j, particle types ityep, jtype
- ------------------------------------------------------------------------- */
-
-Vector3d PairULSPH::ComputeHourglassForce(const int i, const int itype, const int j, const int jtype, const Vector3d dv,
-		const Vector3d xij, const Vector3d g, const double c_ij, const double mu_ij, const double rho_ij) {
-
-	double *rmass = atom->rmass;
-	Vector3d dv_est, f_hg;
-	double visc_magnitude;
-
-	dv_est = -0.5 * (F[i] + F[j]) * xij;
-	double hurz = dv_est.dot(dv) / (dv_est.norm() * dv.norm() + 1.0e-16);
-	if (hurz < 0.0) {
-
-		visc_magnitude = 0.5 * (Q1[itype] + Q1[jtype]) * c_ij * mu_ij / rho_ij;
-		f_hg = -rmass[i] * rmass[j] * visc_magnitude * g;
-//		printf(" f_hg   = %f %f %f\n", f_hg(0), f_hg(1), f_hg(2));
-//		printf("\nnegative\n");
-//		printf(" dv_est = %f %f %f\n", dv_est(0), dv_est(1), dv_est(2));
-//		printf(" dv     = %f %f %f\n", dv(0), dv(1), dv(2));
-	} else {
-		f_hg.setZero();
-	}
-
-	return f_hg;
-
-}

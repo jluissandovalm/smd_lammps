@@ -59,8 +59,8 @@ FixSMDIntegrateUlsph::FixSMDIntegrateUlsph(LAMMPS *lmp, int narg, char **arg) :
 		error->all(FLERR, "Illegal number of arguments for fix smd/integrate_ulsph command");
 
 	adjust_radius_flag = false;
-	xsphFlag = false;
 	vlimit = -1.0;
+	smooth_density_field_factor = 0.0;
 	int iarg = 3;
 
 	if (comm->me == 0) {
@@ -73,13 +73,7 @@ FixSMDIntegrateUlsph::FixSMDIntegrateUlsph(LAMMPS *lmp, int narg, char **arg) :
 			break;
 		}
 
-		if (strcmp(arg[iarg], "xsph") == 0) {
-			xsphFlag = true;
-			if (comm->me == 0) {
-				//error->one(FLERR, "XSPH is currently not available");
-				printf("... will use XSPH time integration\n");
-			}
-		} else if (strcmp(arg[iarg], "adjust_radius") == 0) {
+		if (strcmp(arg[iarg], "adjust_radius") == 0) {
 			adjust_radius_flag = true;
 
 			iarg++;
@@ -117,6 +111,16 @@ FixSMDIntegrateUlsph::FixSMDIntegrateUlsph(LAMMPS *lmp, int narg, char **arg) :
 
 			if (comm->me == 0) {
 				printf("... will limit velocities to <= %g\n", vlimit);
+			}
+		} else if (strcmp(arg[iarg], "smooth_density_field") == 0) {
+			iarg++;
+			if (iarg == narg) {
+				error->all(FLERR, "expected number following smooth_density_field");
+			}
+			smooth_density_field_factor = force->numeric(FLERR, arg[iarg]);
+
+			if (comm->me == 0) {
+				printf("... will smooth density field with factor %g\n", smooth_density_field_factor);
 			}
 		} else {
 			char msg[128];
@@ -168,23 +172,8 @@ void FixSMDIntegrateUlsph::initial_integrate(int vflag) {
 
 	int *mask = atom->mask;
 	int nlocal = atom->nlocal;
-	int i, itmp;
 	double dtfm, vsq, scale;
-	double vxsph_x, vxsph_y, vxsph_z;
-
-	//printf("initial_integrate at timestep %d\n", update->ntimestep);
-
-	/*
-	 * get smoothed velocities from ULSPH pair style
-	 */
-
-	Vector3d *smoothVel = (Vector3d *) force->pair->extract("smd/ulsph/smoothVel_ptr", itmp);
-
-	if (xsphFlag) {
-		if (smoothVel == NULL) {
-			error->one(FLERR, "fix smd/integrate_ulsph failed to access smoothVel array");
-		}
-	}
+	int i;
 
 	if (igroup == atom->firstgroup)
 		nlocal = atom->nfirst;
@@ -211,38 +200,14 @@ void FixSMDIntegrateUlsph::initial_integrate(int vflag) {
 				}
 			}
 
-			if (xsphFlag) {
+			// extrapolate velocity from half- to full-step
+			vest[i][0] = v[i][0] + dtfm * f[i][0];
+			vest[i][1] = v[i][1] + dtfm * f[i][1];
+			vest[i][2] = v[i][2] + dtfm * f[i][2];
 
-				// construct XSPH velocity
-				double eps = 0.5;
-				vxsph_x = v[i][0] * (1.0 - eps) + eps * smoothVel[i](0);
-				vxsph_y = v[i][1] * (1.0 - eps) + eps * smoothVel[i](1);
-				vxsph_z = v[i][2] * (1.0 - eps) + eps * smoothVel[i](2);
-
-				x[i][0] += dtv * vxsph_x;
-				x[i][1] += dtv * vxsph_y;
-				x[i][2] += dtv * vxsph_z;
-
-				vest[i][0] = vxsph_x;// + dtfm * f[i][0];
-				vest[i][1] = vxsph_y;// + dtfm * f[i][1];
-				vest[i][2] = vxsph_z;// + dtfm * f[i][2];
-
-				// extrapolate velocity from half- to full-step
-//				vest[i][0] = v[i][0] + dtfm * f[i][0];
-//				vest[i][1] = v[i][1] + dtfm * f[i][1];
-//				vest[i][2] = v[i][2] + dtfm * f[i][2];
-
-			} else {
-
-				// extrapolate velocity from half- to full-step
-				vest[i][0] = v[i][0] + dtfm * f[i][0];
-				vest[i][1] = v[i][1] + dtfm * f[i][1];
-				vest[i][2] = v[i][2] + dtfm * f[i][2];
-
-				x[i][0] += dtv * v[i][0];
-				x[i][1] += dtv * v[i][1];
-				x[i][2] += dtv * v[i][2];
-			}
+			x[i][0] += dtv * v[i][0];
+			x[i][1] += dtv * v[i][1];
+			x[i][2] += dtv * v[i][2];
 		}
 	}
 }
@@ -263,7 +228,7 @@ void FixSMDIntegrateUlsph::final_integrate() {
 		nlocal = atom->nfirst;
 	double dtfm, vsq, scale;
 	double *rmass = atom->rmass;
-	double vol_increment;
+	double vol_increment, this_rho, new_rho;
 	Matrix3d D;
 
 	/*
@@ -281,9 +246,13 @@ void FixSMDIntegrateUlsph::final_integrate() {
 		error->one(FLERR, "fix smd/integrate_ulsph failed to accesss velocityGradient array");
 	}
 
+	double *neighborhoodRho = (double *) force->pair->extract("smd/ulsph/neighborhoodRho_ptr", itmp);
+	if (neighborhoodRho == NULL) {
+		error->one(FLERR, "fix smd/integrate_ulsph failed to accesss neighborhoodRho array");
+	}
+
 	for (int i = 0; i < nlocal; i++) {
 		if (mask[i] & groupbit) {
-
 			dtfm = dtf / rmass[i];
 			v[i][0] += dtfm * f[i][0];
 			v[i][1] += dtfm * f[i][1];
@@ -312,6 +281,17 @@ void FixSMDIntegrateUlsph::final_integrate() {
 
 			}
 
+			// smooth mass density field
+			if (smooth_density_field_factor > 0.0) {
+				if (neighborhoodRho[i] > 0.0) {
+					this_rho = rmass[i] / vfrac[i];
+					//printf("rho=%f, srho=%f\n", this_rho, smoothRho[i]);
+					new_rho = (1.0 - smooth_density_field_factor) * this_rho + smooth_density_field_factor * neighborhoodRho[i];
+					vfrac[i] = rmass[i] / new_rho;
+				}
+			}
+
+			// time-integrate volume of particle
 			D = 0.5 * (L[i] + L[i].transpose());
 			vol_increment = vfrac[i] * update->dt * D.trace(); // Jacobian of deformation
 			vfrac[i] += vol_increment;
