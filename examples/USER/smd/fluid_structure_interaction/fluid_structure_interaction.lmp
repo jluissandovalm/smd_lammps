@@ -27,7 +27,7 @@ variable        nu equal 0.3 # Poisson ratio for solid objects
 variable        sigma_yield equal 0.1*${E} # plastic yield stress for solid objects
 variable        hardening_parameter equal 0 # plastic hardening parameter for solid objects
 variable        contact_stiffness equal 2.5*${c0}^2*${rho_water} # contact force amplitude
-variable        q1 equal 1.0 # artificial viscosity
+variable        q1 equal 0.06 # artificial viscosity
 variable        q2 equal 0.0 # artificial viscosity
 variable        Hg equal 10 # Hourglass control coefficient for solid objects
 variable        Cp equal 1.0 # heat capacity -- not used here
@@ -67,6 +67,9 @@ region          obj3 sphere 4.3 0.5 0 0.25 units box
 create_atoms    2 region obj1
 create_atoms    2 region obj2
 create_atoms    2 region obj3
+set             region obj1 mol 1001
+set             region obj2 mol 1002
+set             region obj3 mol 1003
 group           solids type 2
 group           tlsph type 2
 
@@ -75,12 +78,13 @@ group           tlsph type 2
 ####################################################################################################
 variable        h equal 2.5*${l0} # SPH kernel diameter
 variable        vol_one equal ${l0}^2 # initial particle volume for 2d simulation
+variable        contact_radius equal ${l0}/2
 set             group all diameter ${h}
-set             group all smd_contact_radius ${l0}
+set             group all smd_contact_radius ${contact_radius}
 set             group all volume  ${vol_one}
 set             group all smd_mass_density ${rho_water}
 set             group solids smd_mass_density ${rho_obj}
-variable        contact_scale equal 1.5 # scale factor to increase contact gap between bodies
+variable        contact_scale equal 2.5 # scale factor to increase contact gap between bodies
 variable        skin equal ${h} # Verlet list range
 neighbor        ${skin} bin
 
@@ -118,7 +122,7 @@ pair_coeff      2 2 smd/hertz ${contact_stiffness}
 # TIME INTEGRATION
 ####################################################################################################
 fix             dtfix tlsph smd/adjust_dt 0.1 # dynamically adjust time increment every step
-fix             integration_fix_water water smd/integrate_ulsph adjust_radius 1.01 10 15     
+fix             integration_fix_water water smd/integrate_ulsph adjust_radius 1.01 10 15  xsph
 fix             integration_fix_solids solids smd/integrate_tlsph
 
 ####################################################################################################
@@ -131,10 +135,11 @@ compute         nn water smd/ulsph_num_neighs
 compute         epl solids smd/plastic_strain
 compute         vol all smd/volume
 compute         rho all smd/rho
+compute         peatom all pe/atom
 
 dump            dump_id all custom 100 dump.LAMMPS id type x y &
                 fx fy vx vy c_eint c_contact_radius mol &
-                c_S[1] c_S[2] c_S[4] mass radius c_epl c_vol c_rho c_nn proc
+                c_S[1] c_S[2] c_S[4] mass radius c_epl c_vol c_rho c_nn proc c_peatom
 dump_modify     dump_id first yes
 
 

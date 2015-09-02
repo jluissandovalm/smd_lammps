@@ -19,8 +19,8 @@ variable        q1 equal 0.06 # standard artificial viscosity linear coefficient
 variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
 variable        hg equal 0.0 # hourglass control coefficient
 variable        cp equal 1.0 # heat capacity of material -- not used here
-variable        K equal ${c0}*${rho}^2
-variable        contact_stiffness equal 0.1*${K}
+variable        K equal ${c0}^2*${rho}
+variable        contact_stiffness equal 10*${K}
 
 ####################################################################################################
 # INITIALIZE LAMMPS
@@ -65,6 +65,12 @@ set 		group all diameter ${h} # set SPH kernel radius
 fix		gfix all gravity 0.01 vector 0.0 -1. 0.0
 
 ####################################################################################################
+# LOAD STL SURFACE
+####################################################################################################
+smd_create/tri_boundary boundary.stl 2 65535
+group           surface type 2
+
+####################################################################################################
 # INTERACTION PHYSICS / MATERIAL MODEL
 # We use polynomial EOS for the pressure and the Johnson Cook strength model
 # An integration point fails (cannot support tension anymore) if the plastic strain exceeds 0.5.
@@ -79,19 +85,15 @@ pair_coeff      1 2 smd/tri_surface ${contact_stiffness}
 
 
 
-####################################################################################################
-# LOAD STL SURFACE
-####################################################################################################
-fix             stl_surface_fix all smd/wall_surface boundary.stl 2 65535
-run             0 # This is important! Always run for 0 timesteps directly after loading STL file!
-group           surface type 2
+
 
 ####################################################################################################
 # TIME INTEGRATION
 ####################################################################################################
 fix             force_fix surface setforce 0 0 0
 fix             dtfix all smd/adjust_dt 0.1 # dynamically adjust time increment every step
-fix             integration_fix all smd/integrate_ulsph adjust_radius 1.01 10 15
+fix             integration_fix all smd/integrate_ulsph adjust_radius 1.01 10 15 &
+                smooth_density_field 0.1
 
 ####################################################################################################
 # SPECIFY TRAJECTORY OUTPUT
@@ -127,4 +129,4 @@ thermo_style custom step dt f_dtfix pe ke v_etot
 ####################################################################################################
 balance          1.1 rcb
 fix              balance_fix all balance 1000 1.1 rcb 
-run              20000
+run              200000
