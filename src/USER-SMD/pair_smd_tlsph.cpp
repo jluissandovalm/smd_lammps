@@ -71,6 +71,7 @@ PairTlsph::PairTlsph(LAMMPS *lmp) :
 	onerad_dynamic = onerad_frozen = maxrad_dynamic = maxrad_frozen = NULL;
 
 	failureModel = NULL;
+	generalMaterialModel = NULL;
 	strengthModel = eos = NULL;
 
 	nmax = 0; // make sure no atom on this proc such that initial memory allocation is correct
@@ -127,6 +128,7 @@ PairTlsph::~PairTlsph() {
 		delete[] particle_dt;
 
 		delete[] failureModel;
+		delete[] generalMaterialModel;
 	}
 }
 
@@ -692,6 +694,8 @@ void PairTlsph::ComputeForces(int eflag, int vflag) {
 
 	} // end loop over i
 
+	//printf("update_flag in pair style  =%d\n", updateFlag);
+
 	if (vflag_fdotr)
 		virial_fdotr_compute();
 }
@@ -895,6 +899,7 @@ void PairTlsph::allocate() {
 	memory->create(strengthModel, n + 1, "pair:strengthmodel");
 	memory->create(eos, n + 1, "pair:eosmodel");
 	failureModel = new failure_types[n + 1];
+	generalMaterialModel = new GeneralMaterialModel[n + 1];
 	memory->create(Lookup, MAX_KEY_VALUE, n + 1, "pair:LookupTable");
 
 	memory->create(cutsq, n + 1, n + 1, "pair:cutsq"); // always needs to be allocated, even with granular neighborlist
@@ -1221,6 +1226,87 @@ void PairTlsph::coeff(int narg, char **arg) {
 				printf("%60s : %g\n", "constant hardening parameter", Lookup[HARDENING_PARAMETER][itype]);
 			}
 		} // end Linear Elastic / perfectly plastic strength only model based on strain rate
+
+		else if (strcmp(arg[ioffset], "*STRENGTH_LINEAR_ORTHOTROPIC") == 0) {
+
+			/*
+			 * orthotropic material model
+			 */
+
+			strengthModel[itype] = STRENGTH_LINEAR_ORTHOTROPIC;
+			if (comm->me == 0) {
+				printf("reading *STRENGTH_LINEAR_PLASTIC\n");
+			}
+
+			t = string("*");
+			iNextKwd = -1;
+			for (iarg = ioffset + 1; iarg < narg; iarg++) {
+				s = string(arg[iarg]);
+				if (s.compare(0, t.length(), t) == 0) {
+					iNextKwd = iarg;
+					break;
+				}
+			}
+
+			if (iNextKwd < 0) {
+				sprintf(str, "no *KEYWORD terminates *STRENGTH_LINEAR_ORTHOTROPIC");
+				error->all(FLERR, str);
+			}
+
+			if (iNextKwd - ioffset != 9 + 1) {
+				sprintf(str, "expected 9 arguments following *STRENGTH_LINEAR_ORTHOTROPIC but got %d\n", iNextKwd - ioffset - 1);
+				error->all(FLERR, str);
+			}
+
+			generalMaterialModel[itype].anisoMaterialModel.E1 = force->numeric(FLERR, arg[ioffset + 1]);
+			generalMaterialModel[itype].anisoMaterialModel.E2 = force->numeric(FLERR, arg[ioffset + 2]);
+			generalMaterialModel[itype].anisoMaterialModel.E3 = force->numeric(FLERR, arg[ioffset + 3]);
+			generalMaterialModel[itype].anisoMaterialModel.v12 = force->numeric(FLERR, arg[ioffset + 4]);
+			generalMaterialModel[itype].anisoMaterialModel.v13 = force->numeric(FLERR, arg[ioffset + 5]);
+			generalMaterialModel[itype].anisoMaterialModel.v23 = force->numeric(FLERR, arg[ioffset + 6]);
+			generalMaterialModel[itype].anisoMaterialModel.G12 = force->numeric(FLERR, arg[ioffset + 7]);
+			generalMaterialModel[itype].anisoMaterialModel.G13 = force->numeric(FLERR, arg[ioffset + 8]);
+			generalMaterialModel[itype].anisoMaterialModel.G23 = force->numeric(FLERR, arg[ioffset + 9]);
+
+			double nu21 = generalMaterialModel[itype].anisoMaterialModel.v12 * generalMaterialModel[itype].anisoMaterialModel.E2 / generalMaterialModel[itype].anisoMaterialModel.E1;
+			double nu31 = generalMaterialModel[itype].anisoMaterialModel.v13 * generalMaterialModel[itype].anisoMaterialModel.E3 / generalMaterialModel[itype].anisoMaterialModel.E1;
+			double nu32 = generalMaterialModel[itype].anisoMaterialModel.v23 * generalMaterialModel[itype].anisoMaterialModel.E3 / generalMaterialModel[itype].anisoMaterialModel.E2;
+
+
+			generalMaterialModel[itype].anisoMaterialModel.S(0,0) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.E1;
+			generalMaterialModel[itype].anisoMaterialModel.S(0,1) = -nu21 / generalMaterialModel[itype].anisoMaterialModel.E2;
+			generalMaterialModel[itype].anisoMaterialModel.S(0,2) = -nu31 / generalMaterialModel[itype].anisoMaterialModel.E3;
+
+			generalMaterialModel[itype].anisoMaterialModel.S(1,0) = -generalMaterialModel[itype].anisoMaterialModel.v12 / generalMaterialModel[itype].anisoMaterialModel.E1;
+			generalMaterialModel[itype].anisoMaterialModel.S(1,1) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.E2;
+			generalMaterialModel[itype].anisoMaterialModel.S(1,2) = -nu32 / generalMaterialModel[itype].anisoMaterialModel.E3;
+
+			generalMaterialModel[itype].anisoMaterialModel.S(2,0) = -generalMaterialModel[itype].anisoMaterialModel.v13 / generalMaterialModel[itype].anisoMaterialModel.E1;
+			generalMaterialModel[itype].anisoMaterialModel.S(2,1) = -generalMaterialModel[itype].anisoMaterialModel.v23 / generalMaterialModel[itype].anisoMaterialModel.E2;
+			generalMaterialModel[itype].anisoMaterialModel.S(2,2) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.E3;
+
+			generalMaterialModel[itype].anisoMaterialModel.S(3,3) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.G23;
+			generalMaterialModel[itype].anisoMaterialModel.S(4,4) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.G13;
+			generalMaterialModel[itype].anisoMaterialModel.S(5,5) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.G12;
+
+			generalMaterialModel[itype].anisoMaterialModel.C = generalMaterialModel[itype].anisoMaterialModel.S.inverse();
+
+
+			if (comm->me == 0) {
+				printf("%60s\n", "Orthotropic linear elastic strength model");
+				printf("%60s : %g\n", "Young's modulus E1", generalMaterialModel[itype].anisoMaterialModel.E1);
+				printf("%60s : %g\n", "Young's modulus E2", generalMaterialModel[itype].anisoMaterialModel.E2);
+				printf("%60s : %g\n", "Young's modulus E3", generalMaterialModel[itype].anisoMaterialModel.E3);
+
+				printf("%60s : %g\n", "Poisson ratio v12", generalMaterialModel[itype].anisoMaterialModel.v12);
+				printf("%60s : %g\n", "Poisson ratio v13", generalMaterialModel[itype].anisoMaterialModel.v13);
+				printf("%60s : %g\n", "Poisson ratio v23", generalMaterialModel[itype].anisoMaterialModel.v23);
+
+				printf("%60s : %g\n", "Shear modulus G12", generalMaterialModel[itype].anisoMaterialModel.G12);
+				printf("%60s : %g\n", "Shear modulus G13", generalMaterialModel[itype].anisoMaterialModel.G13);
+				printf("%60s : %g\n", "Shear modulus G23", generalMaterialModel[itype].anisoMaterialModel.G23);
+			}
+		} // end orthotropic material model
 
 		else if (strcmp(arg[ioffset], "*JOHNSON_COOK") == 0) {
 

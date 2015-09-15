@@ -121,14 +121,13 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 	//printf("in FixSMD_TLSPH_ReferenceConfiguration::pre_exchange()\n");
 	double **defgrad = atom->smd_data_9;
 	double *radius = atom->radius;
-	double *rho = atom->rho;
 	double *vfrac = atom->vfrac;
 	double **x = atom->x;
 	double **x0 = atom->x0;
-	double *rmass = atom->rmass;
 	int nlocal = atom->nlocal;
 	int i, itmp;
 	int *mask = atom->mask;
+	double J;
 	if (igroup == atom->firstgroup) {
 		nlocal = atom->nfirst;
 	}
@@ -143,6 +142,11 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 	if (nn == NULL) {
 		error->all(FLERR, "FixSMDIntegrateTlsph::updateReferenceConfiguration() failed to access numNeighsRefConfig_ptr array");
 	}
+
+	Matrix3d *Fincr = (Matrix3d *) force->pair->extract("smd/tlsph/Fincr_ptr", itmp);
+		if (Fincr == NULL) {
+			error->all(FLERR, "FixSMDIntegrateTlsph::updateReferenceConfiguration() failed to access Fincr_ptr array");
+		}
 
 	// sum all update flag across processors
 	MPI_Allreduce(updateFlag_ptr, &updateFlag, 1, MPI_INT, MPI_MAX, world);
@@ -176,7 +180,12 @@ void FixSMD_TLSPH_ReferenceConfiguration::pre_exchange() {
 				 * We safeguard against excessive deformations by limiting the adjustment range
 				 * to the intervale J \in [0.9..1.1]
 				 */
-				vfrac[i] = rmass[i] / rho[i];
+
+				J = Fincr[i].determinant();
+				J = MAX(J, 0.8);
+				J = MIN(J, 1.2);
+
+				vfrac[i] *= J;
 //
 				if (nn[i] < 15) {
 					radius[i] *= 1.2;

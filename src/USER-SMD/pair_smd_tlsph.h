@@ -75,7 +75,6 @@ public:
 			Matrix3d &sigma_dev_rate, double &plastic_strain_increment);
 	void ComputeDamage(const int i, const Matrix3d strain, const Matrix3d sigmaFinal, Matrix3d &sigma_damaged);
 
-
 protected:
 	void allocate();
 	char *suffix;
@@ -166,7 +165,9 @@ protected:
 
 		CRITICAL_ENERGY_RELEASE_RATE = 50,
 
-		MAX_KEY_VALUE = 51
+		STRENGTH_LINEAR_ORTHOTROPIC = 51,
+
+		MAX_KEY_VALUE = 52
 	};
 
 	struct failure_types { // this is defined per type and determines which failure/damage model is active
@@ -192,6 +193,23 @@ protected:
 		}
 	};
 	failure_types *failureModel;
+
+	struct AnisoMaterialModel { // this is defined per type and determines which failure/damage model is active
+		double E1, E2, E3, v12, v13, v23, G12, G13, G23;
+		Matrix <double, 6, 6> S, C;
+
+		AnisoMaterialModel() {
+			E1 = E2 = E3 = v12 = v13 = v23 = G12 = G13 = G23 = 0.0;
+			S.setZero();
+			C.setZero();
+		}
+	};
+
+	struct GeneralMaterialModel {
+		AnisoMaterialModel anisoMaterialModel;
+	};
+	GeneralMaterialModel *generalMaterialModel;
+
 
 	int ifix_tlsph;
 	int update_method;
