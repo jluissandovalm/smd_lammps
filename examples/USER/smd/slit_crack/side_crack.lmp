@@ -17,7 +17,7 @@ variable        rho equal 1.0
 variable        dstrain equal 2.05e-2 # final delta of percentage strain
 variable        q1 equal 1.0 # standard artificial viscosity
 variable        q2 equal 0.0  # standard artificial viscosity quadratic coefficient
-variable        hg equal 10
+variable        hg equal 00
 variable        cp equal 1.0
 
 ####################################################################################################
@@ -87,9 +87,9 @@ variable        stress_bc equal 0.5*(-f_top_fix[2]+f_bot_fix[2])/${width}
 ####################################################################################################
 # INTERACTION PHYSICS / MATERIAL MODEL
 ####################################################################################################
-pair_style      tlsph
+pair_style      smd/tlsph
 pair_coeff      1 1 *COMMON  ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
-                    *LINEAR_STRENGTH &
+                    *STRENGTH_LINEAR &
                     *EOS_LINEAR &
                     *FAILURE_ENERGY_RELEASE_RATE ${GIc} &
                     *END

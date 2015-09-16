@@ -24,6 +24,7 @@
 #include <iostream>
 #include "math_special.h"
 #include "stdio.h"
+#include "smd_math.h"
 
 #include <Eigen/Eigen>
 #include <Eigen/Dense>
@@ -32,6 +33,7 @@
 using namespace LAMMPS_NS::MathSpecial;
 using namespace std;
 using namespace Eigen;
+using namespace SMD_Math;
 
 #define MIN(A,B) ((A) < (B) ? (A) : (B))
 #define MAX(A,B) ((A) > (B) ? (A) : (B))
@@ -369,6 +371,37 @@ void JohnsonCookStrength(const double G, const double cp, const double espec, co
 		sigma_dev_rate__ = sigmaFinal_dev__ - sigmaInitial_dev;
 		//printf("yielding has occured.\n");
 	}
+}
+
+void StrengthLinearOrthotropic(const Matrix <double, 6, 6> C, const Matrix3d sigmaInitial_dev, const Matrix3d d, const double dt, Matrix3d &sigmaFinal_dev, Matrix3d& sigma_dev_rate) {
+	//cout << "this is the stiffness matrix for orthotropic elasticity" << endl << C << endl;
+
+	// multiply stiffness matrix on to strain vector (Voigt notation from https://en.wikipedia.org/wiki/Hooke%27s_law)
+
+	VectorXd strainRate(6);
+	VectorXd stressRateVoigt(6);
+	strainRate(0) = d(0,0);
+	strainRate(1) = d(1,1);
+	strainRate(2) = d(2,2);
+	strainRate(3) = 2.0 * d(1,2); // yz
+	strainRate(4) = 2.0 * d(0,2); // xz
+	strainRate(5) = 2.0 * d(0,1); // xy
+
+	stressRateVoigt = C * strainRate;
+
+	// convert stress rate from Voigt notation to Matrix notation
+	Matrix3d stressRate;
+	stressRate(0,0) = stressRateVoigt(0);
+	stressRate(1,1) = stressRateVoigt(1);
+	stressRate(2,2) = stressRateVoigt(2);
+	stressRate(1,2) = stressRateVoigt(3); // yz
+	stressRate(0,2) = stressRateVoigt(4); // xz
+	stressRate(0,1) = stressRateVoigt(5); // xy
+
+	// make stress rate traceless
+	sigma_dev_rate = Deviator(stressRate);
+
+	sigmaFinal_dev = sigmaInitial_dev + dt * sigma_dev_rate;
 }
 
 /* ----------------------------------------------------------------------

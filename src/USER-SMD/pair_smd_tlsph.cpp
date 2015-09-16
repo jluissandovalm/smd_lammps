@@ -1290,6 +1290,10 @@ void PairTlsph::coeff(int narg, char **arg) {
 			generalMaterialModel[itype].anisoMaterialModel.S(5,5) = 1.0 / generalMaterialModel[itype].anisoMaterialModel.G12;
 
 			generalMaterialModel[itype].anisoMaterialModel.C = generalMaterialModel[itype].anisoMaterialModel.S.inverse();
+			cout << "this is the stiffness matrix for orthotropic elasticity" << endl << generalMaterialModel[itype].anisoMaterialModel.C << endl;
+			if (generalMaterialModel[itype].anisoMaterialModel.S.determinant() <= 0.0) {
+				error->one(FLERR, "determinant of compliance matrix is <= 0");
+			}
 
 
 			if (comm->me == 0) {
@@ -2166,6 +2170,9 @@ void PairTlsph::ComputeStressDeviator(const int i, const Matrix3d sigmaInitial_d
 				Lookup[JC_B][itype], Lookup[JC_a][itype], Lookup[JC_C][itype], Lookup[JC_epdot0][itype], Lookup[JC_T0][itype],
 				Lookup[JC_Tmelt][itype], Lookup[JC_M][itype], dt, eff_plastic_strain[i], eff_plastic_strain_rate[i],
 				sigmaInitial_dev, d_dev, sigmaFinal_dev, sigma_dev_rate, plastic_strain_increment);
+		break;
+	case STRENGTH_LINEAR_ORTHOTROPIC:
+		StrengthLinearOrthotropic(generalMaterialModel[itype].anisoMaterialModel.C, sigmaInitial_dev, D[i], dt, sigmaFinal_dev, sigma_dev_rate);
 		break;
 	case STRENGTH_NONE:
 		sigmaFinal_dev.setZero();
