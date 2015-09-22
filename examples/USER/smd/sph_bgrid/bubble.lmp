@@ -1,0 +1,93 @@
+# Water bubble test.
+# 
+
+variable        rho equal 1000 # mass density of water dropt
+variable        h equal 0.08 # characteristic smoothing length, used here only for determining 
+variable        K equal 2e5 # bulk modulus of the fluid
+variable        hg equal 0 # hourglass control coefficient, must be zero for fluids.
+variable        art_visc equal 0.5 # We can set the artificial viscosity to zero if physical visc. is present.
+# ----
+variable        c0 equal sqrt(${K}/${rho}) # speed of sound
+variable        dt equal 0.125*${h}/${c0} # CFL estimate for the stable timestep
+print           "sound speed is ${c0}, CFL timestep is approximately ${dt}"
+variable        skin equal 0.5*${h} # Verlet list range
+
+units		si
+dimension       2
+boundary        s s p
+atom_style      smd
+comm_style      brick
+neighbor        ${skin} bin
+neigh_modify    every 10 delay 0 check yes
+comm_modify     vel yes
+newton          off
+
+region          box block 0 10 0 10 -0.1 0.1 units box
+create_box      1 box
+region          sphere sphere 5 5 0 3 units box
+variable        l0 equal 0.2
+lattice         sq ${l0}
+create_atoms    1 region sphere
+
+variable        vol_one equal ${l0}^2
+set             group all volume ${vol_one}
+set             group all smd_mass_density ${rho}
+variable        h equal 2.4*${l0}
+set             group all diameter ${h}
+
+
+
+# this is an updated-Lagrangian pair style with Tait EOS and physical viscosity.
+pair_style      smd/ulsph_bgrd *DENSITY_CONTINUITY *VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION
+#                           density speed_of_sound artif.visc.  heat.capacity hourglass
+pair_coeff      1 1 *COMMON ${rho}  ${c0}          ${art_visc}  0             ${hg} &
+		*EOS_TAIT 7 &
+                *VISCOSITY_NEWTON 1.0e-4 &
+	        *END
+
+compute         rho all smd/rho
+compute         nn all smd/ulsph_num_neighs
+compute         contact_radius all smd/contact_radius
+compute         eint all smd/internal_energy
+compute         alleint all reduce sum c_eint
+compute         S all smd/ulsph_stress # stress tensor: xx, yy, zz, xy, xz, yz components
+compute         D all smd/ulsph_strain_rate
+variable        etot equal ke+c_alleint+pe
+variable        amz equal angmom(all,z) # angular momentum
+
+# time integration
+timestep        ${dt} # set an initial estimate for the zero-th timestep
+fix             dtfix all smd/adjust_dt 0.05 # dynamically adjust stable timestep
+fix             integration_fix all smd/integrate_ulsph # actual integration for equations of motion
+
+variable        dumpFreq equal 10
+dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
+                fx fy fz vx vy vz c_eint &
+                c_contact_radius c_nn mol c_rho c_S[1] c_S[2] c_S[4] radius &
+                c_D[1] c_D[2] c_D[4] 
+
+dump_modify     dump_id first yes
+
+thermo          100
+thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
+
+# Apply initial velocity conditions.
+# Select either case 1 / 2 / 3 by uncommenting lines below.
+#
+# Case 1: ellipsoidal deformation: angular momentum should stay zero if kernel gradient correction
+# is used, and drift away from zero if no kernel gradient is used
+# velocity        all ramp vx  -0.2 0.2 y -1.0 1.0 units box
+# velocity        all ramp vy  -0.2 0.2 x  1.0 -1.0 units box
+#
+# Case 2: rotation around center of mass:  angular momentum should stay constant if kernel gradient correction
+# is used, and drift if no kernel gradient is used
+#velocity        all ramp vx    1 -1 x -1.0 1.0 units box
+#velocity        all ramp vy    -1 1 y -1.0 1.0 units box
+#
+# Case 3: make the drop of water hit a rigid wall. Angular momentum is never conserved.
+#run            1000
+velocity       all set 0 -1 0 units box
+fix            23 all setforce 0 0 0 
+#fix             ywall all wall/reflect ylo -1.0
+
+run 30000

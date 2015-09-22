@@ -139,6 +139,32 @@ static inline void M4PrimeKernel(const double s, double &wf) {
 	}
 }
 
+/*
+ * Disney Kernel used for Material Point Method
+ */
+static inline double DisneyKernel(double r) {
+	if (r <= 1.0) {
+		return 0.5 * r * r * r - r * r + 2./3.;
+	} else if (r < 2.0) {
+		return - r * r * r / 6. + r * r - 2 * r + 4./3.;
+	} else {
+		return 0.0;
+	}
+}
+
+/*
+ * Disney Kernel used for Material Point Method
+ */
+static inline double DisneyKernelDerivative(double r) {
+	if (r <= 1.0) {
+		return 1.5 * r * r - 2. * r;
+	} else if (r < 2.0) {
+		return - 0.5 * r * r + 2. * r - 2.;
+	} else {
+		return 0.0;
+	}
+}
+
 }
 
 
