@@ -462,10 +462,13 @@ void PairULSPHBG::ScatterToGrid() {
 	for (ix = 0; ix < grid_nx; ix++) {
 		for (iy = 0; iy < grid_ny; iy++) {
 			for (iz = 0; iz < grid_nz; iz++) {
-				if (gridnodes[jx][jy][jz].mass > 0.0) {
-					gridnodes[ix][iy][iz].vx /= gridnodes[jx][jy][jz].mass;
-					gridnodes[ix][iy][iz].vy /= gridnodes[jx][jy][jz].mass;
-					gridnodes[ix][iy][iz].vz /= gridnodes[jx][jy][jz].mass;
+				//printf("grid node mass = %f\n", gridnodes[ix][iy][iz].mass);
+				//printf("grid node y velocity = %f\n", gridnodes[ix][iy][iz].vy);
+				if (gridnodes[ix][iy][iz].mass > 0.1) {
+					gridnodes[ix][iy][iz].vx /= gridnodes[ix][iy][iz].mass;
+					gridnodes[ix][iy][iz].vy /= gridnodes[ix][iy][iz].mass;
+					gridnodes[ix][iy][iz].vz /= gridnodes[ix][iy][iz].mass;
+					//printf("grid node y velocity = %f\n", gridnodes[ix][iy][iz].vy);
 				}
 			}
 		}
@@ -519,7 +522,7 @@ void PairULSPHBG::GatherFromGrid() {
 
 					r = dx.norm();
 					r_scaled = r * icellsize;
-					wfd = DisneyKernelDerivative(r_scaled);
+					wfd = DisneyKernelDerivative(r_scaled) * icellsize;
 
 					g = (wfd / r) * dx; // this is the kernel gradient
 					vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy, gridnodes[jx][jy][jz].vz;

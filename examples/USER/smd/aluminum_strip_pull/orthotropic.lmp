@@ -74,7 +74,7 @@ fix             velbot_fix bot smd/setvelocity 0 v_vel_down 0
 ####################################################################################################
 pair_style      smd/tlsph
 pair_coeff      1 1 *COMMON ${rho} ${E} ${nu} ${q1} ${q2} ${hg} ${cp} &
-                *STRENGTH_LINEAR_ORTHOTROPIC 30 ${E} ${E} ${nu} ${nu} ${nu} ${G} ${G} ${G} &
+                *STRENGTH_LINEAR_ORTHOTROPIC ${E} 30 ${E} ${nu} ${nu} ${nu} ${G} ${G} ${G} &
                 *EOS_LINEAR & 
                 *END
 
