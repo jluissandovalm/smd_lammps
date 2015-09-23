@@ -140,7 +140,8 @@ private:
 	Gridnode ***gridnodes;
 	double cellsize, icellsize;
 	int grid_nx, grid_ny, grid_nz;
-	int shift_ix, shift_iy, shift_iz;
+	int min_ix, min_iy, min_iz;
+	int max_ix, max_iy, max_iz;
 
 };
 

@@ -130,10 +130,10 @@ static inline void Poly6Kernel(const double hsq, const double h, const double rs
 static inline void M4PrimeKernel(const double s, double &wf) {
 	if (s < 1.0) {
 		//wf = 1.0 - 2.5 * s * s + (3./2.) * s * s * s;
-		wf = 1.0 - s * s *(2.5 -1.5 *s);
+		wf = 1.0 - s * s * (2.5 - 1.5 * s);
 	} else if (s < 2.0) {
 		//wf = 0.5 * (1.0 - s) * ((2.0 - s) * (2.0 - s));
-		wf = 2.0 + (-4.0 + (2.5 - 0.5 * s)*s)*s;
+		wf = 2.0 + (-4.0 + (2.5 - 0.5 * s) * s) * s;
 	} else {
 		wf = 0.0;
 	}
@@ -143,12 +143,14 @@ static inline void M4PrimeKernel(const double s, double &wf) {
  * Disney Kernel used for Material Point Method
  */
 static inline double DisneyKernel(double r) {
-	if (r <= 1.0) {
-		return 0.5 * r * r * r - r * r + 2./3.;
-	} else if (r < 2.0) {
-		return - r * r * r / 6. + r * r - 2 * r + 4./3.;
-	} else {
+	if (r >= 2.0) {
 		return 0.0;
+	}
+
+	if (r <= 1.0) {
+		return 0.5 * r * r * r - r * r + 2. / 3.;
+	} else {
+		return -r * r * r / 6. + r * r - 2 * r + 4. / 3.;
 	}
 }
 
@@ -156,17 +158,16 @@ static inline double DisneyKernel(double r) {
  * Disney Kernel used for Material Point Method
  */
 static inline double DisneyKernelDerivative(double r) {
+	if (r >= 2.0) {
+		return 0.0;
+	}
 	if (r <= 1.0) {
 		return 1.5 * r * r - 2. * r;
-	} else if (r < 2.0) {
-		return - 0.5 * r * r + 2. * r - 2.;
 	} else {
-		return 0.0;
+		return -0.5 * r * r + 2. * r - 2.;
 	}
 }
 
 }
-
-
 
 #endif /* SMD_KERNEL_FUNCTIONS_H_ */

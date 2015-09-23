@@ -375,13 +375,18 @@ void PairULSPHBG::CreateGrid() {
 
 	// we want the leftmost index to be 0, i.e. index(minx - kernel bandwidth > 0
 	// to this end, we assume that the kernel does not cover more than three cells to either side
-	grid_nx = icellsize * (maxx - minx) + 7;
-	grid_ny = icellsize * (maxy - miny) + 7;
-	grid_nz = icellsize * (maxz - minz) + 7;
 
-	shift_ix = -icellsize * minx + 3;
-	shift_iy = -icellsize * miny + 3;
-	shift_iz = -icellsize * minz + 3;
+	min_ix = icellsize * minx;
+	max_ix = icellsize * maxx;
+	//printf("minx=%f, min_ix=%d\n", minx, min_ix);
+	min_iy = icellsize * miny;
+	max_iy = icellsize * maxy;
+	min_iz = icellsize * minz;
+	max_iz = icellsize * maxz;
+
+	grid_nx = (max_ix - min_ix) + 7;
+	grid_ny = (max_iy - min_iy) + 7;
+	grid_nz = (max_iz - min_iz) + 7;
 
 	// allocate grid storage
 	// we need a triple of indices (i, j, k)
@@ -412,16 +417,22 @@ void PairULSPHBG::ScatterToGrid() {
 	int i;
 	int ix, iy, iz, jx, jy, jz;
 	double delx, dely, delz, r, wf;
+	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
 
 	// transfer particle velocities to grid nodes
 	for (i = 0; i < nall; i++) {
-		ix = icellsize * x[i][0] + shift_ix; // indices of central cell
-		iy = icellsize * x[i][1] + shift_iy;
-		iz = icellsize * x[i][2] + shift_iz;
 
-		for (jx = ix - 2; jx < ix + 3; jx++) {
-			for (jy = iy - 2; jy < iy + 3; jy++) {
-				for (jz = iz - 2; jz < iz + 3; jz++) {
+		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
+
+		ix = icellsize * px_shifted;
+		iy = icellsize * py_shifted;
+		iz = icellsize * pz_shifted;
+
+		for (jx = ix - 1; jx < ix + 3; jx++) {
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+				for (jz = iz - 1; jz < iz + 3; jz++) {
 
 					//printf("cell indices: %d %d %d\n", jx, jy, jz);
 
@@ -440,12 +451,14 @@ void PairULSPHBG::ScatterToGrid() {
 					}
 
 					// distance between particle and grid node
-					delx = x[i][0] - (jx - shift_ix) * cellsize;
-					dely = x[i][1] - (jy - shift_iy) * cellsize;
-					delz = x[i][2] - (jz - shift_iz) * cellsize;
+					delx = px_shifted - jx * cellsize;
+					dely = py_shifted - jy * cellsize;
+					delz = pz_shifted - jz * cellsize;
 
 					r = sqrt(delx * delx + dely * dely + delz * delz) * icellsize;
 					wf = DisneyKernel(r);
+
+					//printf("particle x=%f, shifted px =%f, cell x=%f, rscaled=%f, wf=%f\n", x[i][0], px_shifted, jx * cellsize, r, wf);
 
 					//printf("x=%f, pos grid x=%f, dx=%f\n", x[i][0], (jx - shift_ix) * cellsize, delx);
 
@@ -453,6 +466,9 @@ void PairULSPHBG::ScatterToGrid() {
 					gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
 					gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
 					gridnodes[jx][jy][jz].vz += wf * rmass[i] * v[i][2];
+
+					//if (fabs(wf) > 1.0e-12)
+					numNeighs[i] += 1;
 				}
 			}
 		}
@@ -481,25 +497,29 @@ void PairULSPHBG::ScatterToGrid() {
 void PairULSPHBG::GatherFromGrid() {
 	double **x = atom->x;
 	int nlocal = atom->nlocal;
-	int nall = nlocal + atom->nghost;
 	int i;
 	int ix, iy, iz, jx, jy, jz;
 	double r, wfd, r_scaled;
+	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
 	Vector3d g, dx, vel_grid;
 	Matrix3d velocity_gradient;
 
 	// transfer particle velocities to grid nodes
-	for (i = 0; i < nall; i++) {
-		ix = icellsize * x[i][0] + shift_ix; // indices of central cell
-		iy = icellsize * x[i][1] + shift_iy;
-		iz = icellsize * x[i][2] + shift_iz;
+	for (i = 0; i < nlocal; i++) {
+
 		velocity_gradient.setZero();
 
-		for (jx = ix - 2; jx < ix + 3; jx++) {
-			for (jy = iy - 2; jy < iy + 3; jy++) {
-				for (jz = iz - 2; jz < iz + 3; jz++) {
+		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-					//printf("cell indices: %d %d %d\n", jx, jy, jz);
+		ix = icellsize * px_shifted;
+		iy = icellsize * py_shifted;
+		iz = icellsize * pz_shifted;
+
+		for (jx = ix - 1; jx < ix + 3; jx++) {
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+				for (jz = iz - 1; jz < iz + 3; jz++) {
 
 					// check that cell indices are within bounds
 					if ((jx < 0) || (jx >= grid_nx)) {
@@ -516,18 +536,20 @@ void PairULSPHBG::GatherFromGrid() {
 					}
 
 					// distance between particle and grid node
-					dx(0) = x[i][0] - (jx - shift_ix) * cellsize;
-					dx(1) = x[i][1] - (jy - shift_iy) * cellsize;
-					dx(2) = x[i][2] - (jz - shift_iz) * cellsize;
+					dx(0) = px_shifted - jx * cellsize;
+					dx(1) = py_shifted - jy * cellsize;
+					dx(2) = pz_shifted - jz * cellsize;
 
 					r = dx.norm();
 					r_scaled = r * icellsize;
 					wfd = DisneyKernelDerivative(r_scaled) * icellsize;
 
-					g = (wfd / r) * dx; // this is the kernel gradient
+					g = (wfd / (r + 1.0e-8)) * dx; // this is the kernel gradient
 					vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy, gridnodes[jx][jy][jz].vz;
 
 					velocity_gradient += vel_grid * g.transpose();
+
+					numNeighs[i] += 1;
 				}
 			}
 		}
