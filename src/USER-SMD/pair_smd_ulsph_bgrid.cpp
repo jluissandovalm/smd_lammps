@@ -410,13 +410,13 @@ void PairULSPHBG::CreateGrid() {
 
 void PairULSPHBG::ScatterToGrid() {
 	double **x = atom->x;
-	double **v = atom->vest;
+	double **v = atom->v;
 	double *rmass = atom->rmass;
 	int nlocal = atom->nlocal;
 	int nall = nlocal + atom->nghost;
 	int i;
 	int ix, iy, iz, jx, jy, jz;
-	double delx, dely, delz, r, wf;
+	double delx, dely, delz, wf;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
 
 	// transfer particle velocities to grid nodes
@@ -431,47 +431,49 @@ void PairULSPHBG::ScatterToGrid() {
 		iz = icellsize * pz_shifted;
 
 		for (jx = ix - 1; jx < ix + 3; jx++) {
+			//jy = iy;
+			jz = iz;
 			for (jy = iy - 1; jy < iy + 3; jy++) {
-				for (jz = iz - 1; jz < iz + 3; jz++) {
+				//	for (jz = iz - 1; jz < iz + 3; jz++) {
 
-					//printf("cell indices: %d %d %d\n", jx, jy, jz);
+				//printf("cell indices: %d %d %d\n", jx, jy, jz);
 
-					// check that cell indices are within bounds
-					if ((jx < 0) || (jx >= grid_nx)) {
-						printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
-						error->one(FLERR, "");
-					}
-					if ((jy < 0) || (jy >= grid_ny)) {
-						printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
-						error->one(FLERR, "");
-					}
-					if ((jz < 0) || (jz >= grid_nz)) {
-						printf("z cell indez %d is outside range 0 .. %d\n", jz, grid_nz);
-						error->one(FLERR, "");
-					}
-
-					// distance between particle and grid node
-					delx = px_shifted - jx * cellsize;
-					dely = py_shifted - jy * cellsize;
-					delz = pz_shifted - jz * cellsize;
-
-					r = sqrt(delx * delx + dely * dely + delz * delz) * icellsize;
-					wf = DisneyKernel(r);
-
-					//printf("particle x=%f, shifted px =%f, cell x=%f, rscaled=%f, wf=%f\n", x[i][0], px_shifted, jx * cellsize, r, wf);
-
-					//printf("x=%f, pos grid x=%f, dx=%f\n", x[i][0], (jx - shift_ix) * cellsize, delx);
-
-					gridnodes[jx][jy][jz].mass += wf * rmass[i];
-					gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
-					gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
-					gridnodes[jx][jy][jz].vz += wf * rmass[i] * v[i][2];
-
-					//if (fabs(wf) > 1.0e-12)
-					numNeighs[i] += 1;
+				// check that cell indices are within bounds
+				if ((jx < 0) || (jx >= grid_nx)) {
+					printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+					error->one(FLERR, "");
 				}
+				if ((jy < 0) || (jy >= grid_ny)) {
+					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+					error->one(FLERR, "");
+				}
+				if ((jz < 0) || (jz >= grid_nz)) {
+					printf("z cell indez %d is outside range 0 .. %d\n", jz, grid_nz);
+					error->one(FLERR, "");
+				}
+
+				// scaled distance between particle and grid node
+				delx = fabs(px_shifted * icellsize - jx);
+				dely = fabs(py_shifted * icellsize - jy);
+				delz = 0.0;
+				//fabs(pz_shifted * icellsize - jz); // already scaled
+
+				wf = DisneyKernel(delx) * DisneyKernel(dely); // * DisneyKernel(delz);
+
+				//printf("particle x=%f, shifted px =%f, cell x=%f, rscaled=%f, wf=%f\n", x[i][0], px_shifted, jx * cellsize, r, wf);
+
+				//printf("x=%f, pos grid x=%f, dx=%f\n", x[i][0], (jx - shift_ix) * cellsize, delx);
+
+				gridnodes[jx][jy][jz].mass += wf * rmass[i];
+				gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
+				gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
+				gridnodes[jx][jy][jz].vz += wf * rmass[i] * v[i][2];
+
+				//if (fabs(wf) > 1.0e-12)
+				numNeighs[i] += 1;
 			}
 		}
+		//}
 	}
 
 	// normalize grid data
@@ -480,7 +482,7 @@ void PairULSPHBG::ScatterToGrid() {
 			for (iz = 0; iz < grid_nz; iz++) {
 				//printf("grid node mass = %f\n", gridnodes[ix][iy][iz].mass);
 				//printf("grid node y velocity = %f\n", gridnodes[ix][iy][iz].vy);
-				if (gridnodes[ix][iy][iz].mass > 0.1) {
+				if (gridnodes[ix][iy][iz].mass > 1.0e-8) {
 					gridnodes[ix][iy][iz].vx /= gridnodes[ix][iy][iz].mass;
 					gridnodes[ix][iy][iz].vy /= gridnodes[ix][iy][iz].mass;
 					gridnodes[ix][iy][iz].vz /= gridnodes[ix][iy][iz].mass;
@@ -496,13 +498,14 @@ void PairULSPHBG::ScatterToGrid() {
 
 void PairULSPHBG::GatherFromGrid() {
 	double **x = atom->x;
+	double **v = atom->v;
 	int nlocal = atom->nlocal;
 	int i;
 	int ix, iy, iz, jx, jy, jz;
-	double r, wfd, r_scaled;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
-	Vector3d g, dx, vel_grid;
+	Vector3d g, dx, vel_grid, vel_particle, vel_diff;
 	Matrix3d velocity_gradient;
+	double delx, dely, delz, wfx, wfy, wfz, wfdx, wfdy, wfdz;
 
 	// transfer particle velocities to grid nodes
 	for (i = 0; i < nlocal; i++) {
@@ -517,41 +520,63 @@ void PairULSPHBG::GatherFromGrid() {
 		iy = icellsize * py_shifted;
 		iz = icellsize * pz_shifted;
 
+		vel_particle << v[i][0], v[i][1], v[i][2];
+
 		for (jx = ix - 1; jx < ix + 3; jx++) {
+			jz = iz;
 			for (jy = iy - 1; jy < iy + 3; jy++) {
-				for (jz = iz - 1; jz < iz + 3; jz++) {
+				//for (jz = iz - 1; jz < iz + 3; jz++) {
 
-					// check that cell indices are within bounds
-					if ((jx < 0) || (jx >= grid_nx)) {
-						printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
-						error->one(FLERR, "");
-					}
-					if ((jy < 0) || (jy >= grid_ny)) {
-						printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
-						error->one(FLERR, "");
-					}
-					if ((jz < 0) || (jz >= grid_nz)) {
-						printf("z cell indez %d is outside range 0 .. %d\n", jz, grid_nz);
-						error->one(FLERR, "");
-					}
-
-					// distance between particle and grid node
-					dx(0) = px_shifted - jx * cellsize;
-					dx(1) = py_shifted - jy * cellsize;
-					dx(2) = pz_shifted - jz * cellsize;
-
-					r = dx.norm();
-					r_scaled = r * icellsize;
-					wfd = DisneyKernelDerivative(r_scaled) * icellsize;
-
-					g = (wfd / (r + 1.0e-8)) * dx; // this is the kernel gradient
-					vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy, gridnodes[jx][jy][jz].vz;
-
-					velocity_gradient += vel_grid * g.transpose();
-
-					numNeighs[i] += 1;
+				// check that cell indices are within bounds
+				if ((jx < 0) || (jx >= grid_nx)) {
+					printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+					error->one(FLERR, "");
 				}
+				if ((jy < 0) || (jy >= grid_ny)) {
+					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+					error->one(FLERR, "");
+				}
+				if ((jz < 0) || (jz >= grid_nz)) {
+					printf("z cell indez %d is outside range 0 .. %d\n", jz, grid_nz);
+					error->one(FLERR, "");
+				}
+
+				// scaled distance between particle and grid node
+				delx = fabs(px_shifted * icellsize - jx);
+				dely = fabs(py_shifted * icellsize - jy);
+				delz = fabs(pz_shifted * icellsize - jz); // already scaled
+
+				wfx = DisneyKernel(delx);
+				wfy = DisneyKernel(dely);
+				wfz = DisneyKernel(delz);
+
+				wfdx = DisneyKernelDerivative(delx) * icellsize;
+				wfdy = DisneyKernelDerivative(dely) * icellsize;
+				wfdz = DisneyKernelDerivative(delz);
+
+				dx(0) = px_shifted - jx * cellsize;
+				dx(1) = py_shifted - jy * cellsize;
+				dx(2) = 0.0; //pz_shifted - jz * cellsize;
+
+				g(0) = wfdx * wfy;
+				g(1) = wfdy * wfx;
+				g(2) = 0.0;
+
+				if ((dx(0)) < 0.0) g(0) *= -1.0;
+				if ((dx(1)) < 0.0) g(1) *= -1.0;
+
+				vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy , gridnodes[jx][jy][jz].vz;
+
+
+
+				vel_diff = vel_grid - vel_particle;
+//				if (vel_diff.norm() > 1.0e-8) {
+//					printf("vel grid=%f, vel particle=%f\n", vel_grid(0), vel_particle(0));
+//				}
+
+				velocity_gradient += vel_diff * g.transpose();
 			}
+			//}
 		}
 
 		L[i] = velocity_gradient;
@@ -799,7 +824,7 @@ void PairULSPHBG::compute(int eflag, int vflag) {
 
 				// accumulate smooth velocities
 				shepardWeight[i] += jvol * wf;
-				numNeighs[i] += 1;
+				//numNeighs[i] += 1;
 				neighborhoodRho[i] += wf * rmass[j];
 
 				if (j < nlocal) {
@@ -809,7 +834,7 @@ void PairULSPHBG::compute(int eflag, int vflag) {
 					de[j] += deltaE;
 
 					shepardWeight[j] += wf * ivol;
-					numNeighs[j] += 1;
+					//numNeighs[j] += 1;
 					neighborhoodRho[j] += wf * rmass[i];
 				}
 
