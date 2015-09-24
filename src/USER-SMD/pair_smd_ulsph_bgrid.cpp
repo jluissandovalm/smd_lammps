@@ -400,27 +400,49 @@ void PairULSPHBG::CreateGrid() {
 				gridnodes[ix][iy][iz].vx = 0.0;
 				gridnodes[ix][iy][iz].vy = 0.0;
 				gridnodes[ix][iy][iz].vz = 0.0;
+				gridnodes[ix][iy][iz].vx_new = 0.0;
+				gridnodes[ix][iy][iz].vy_new = 0.0;
+				gridnodes[ix][iy][iz].vz_new = 0.0;
+				gridnodes[ix][iy][iz].fx = 0.0;
+				gridnodes[ix][iy][iz].fy = 0.0;
+				gridnodes[ix][iy][iz].fz = 0.0;
 			}
 		}
 	}
 
 }
 
-/* ---------------------------------------------------------------------- */
+/* ----------------------------------------------------------------------
+ *  1) transfer velocities to grid (step 1)
+ *  2) calculate grid forces (step 3)
+ *
+ * ---------------------------------------------------------------------- */
 
 void PairULSPHBG::ScatterToGrid() {
 	double **x = atom->x;
 	double **v = atom->v;
 	double *rmass = atom->rmass;
+	double *vfrac = atom->vfrac;
+	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int nall = nlocal + atom->nghost;
-	int i;
+	int i, itype;
 	int ix, iy, iz, jx, jy, jz;
-	double delx, dely, delz, wf;
+	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wf, wfx, wfdx, wfy, wfdy;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
+	double rho, pressure;
+	Vector3d g;
+	Matrix3d eye;
+	eye.setIdentity();
 
 	// transfer particle velocities to grid nodes
 	for (i = 0; i < nall; i++) {
+
+		rho = rmass[i] / vfrac[i];
+		itype = type[i];
+		TaitEOS_density(Lookup[EOS_TAIT_EXPONENT][itype], Lookup[REFERENCE_SOUNDSPEED][itype], Lookup[REFERENCE_DENSITY][itype],
+				rho, pressure, c0[i]);
+		stressTensor[i] = -pressure * eye;
 
 		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
 		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
@@ -429,51 +451,59 @@ void PairULSPHBG::ScatterToGrid() {
 		ix = icellsize * px_shifted;
 		iy = icellsize * py_shifted;
 		iz = icellsize * pz_shifted;
+		jz = iz; // for now, we focus on 2d
 
 		for (jx = ix - 1; jx < ix + 3; jx++) {
-			//jy = iy;
-			jz = iz;
+
+			// check that cell indices are within bounds
+			if ((jx < 0) || (jx >= grid_nx)) {
+				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+				error->one(FLERR, "");
+			}
+
+			delx_scaled = px_shifted * icellsize - 1.0 * jx;
+			delx_scaled_abs = fabs(delx_scaled);
+			wfx = DisneyKernel(delx_scaled_abs);
+			wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
+			if (delx_scaled < 0.0)
+				wfdx = -wfdx;
+
 			for (jy = iy - 1; jy < iy + 3; jy++) {
-				//	for (jz = iz - 1; jz < iz + 3; jz++) {
 
-				//printf("cell indices: %d %d %d\n", jx, jy, jz);
-
-				// check that cell indices are within bounds
-				if ((jx < 0) || (jx >= grid_nx)) {
-					printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
-					error->one(FLERR, "");
-				}
 				if ((jy < 0) || (jy >= grid_ny)) {
 					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
 					error->one(FLERR, "");
 				}
-				if ((jz < 0) || (jz >= grid_nz)) {
-					printf("z cell indez %d is outside range 0 .. %d\n", jz, grid_nz);
-					error->one(FLERR, "");
-				}
 
-				// scaled distance between particle and grid node
-				delx = fabs(px_shifted * icellsize - jx);
-				dely = fabs(py_shifted * icellsize - jy);
-				delz = 0.0;
-				//fabs(pz_shifted * icellsize - jz); // already scaled
+				dely_scaled = py_shifted * icellsize - 1.0 * jy;
+				dely_scaled_abs = fabs(dely_scaled);
+				wfy = DisneyKernel(dely_scaled_abs);
+				wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
+				if (dely_scaled < 0.0)
+					wfdy = -wfdy;
 
-				wf = DisneyKernel(delx) * DisneyKernel(dely); // * DisneyKernel(delz);
+				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
 
-				//printf("particle x=%f, shifted px =%f, cell x=%f, rscaled=%f, wf=%f\n", x[i][0], px_shifted, jx * cellsize, r, wf);
-
-				//printf("x=%f, pos grid x=%f, dx=%f\n", x[i][0], (jx - shift_ix) * cellsize, delx);
+				g(0) = wfdx * wfy; // this is the kernel gradient
+				g(1) = wfdy * wfx;
+				g(2) = 0.0;
 
 				gridnodes[jx][jy][jz].mass += wf * rmass[i];
 				gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
 				gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
 				gridnodes[jx][jy][jz].vz += wf * rmass[i] * v[i][2];
 
-				//if (fabs(wf) > 1.0e-12)
+				gridnodes[jx][jy][jz].fx += vfrac[i] * pressure * g(0);
+				gridnodes[jx][jy][jz].fy += vfrac[i] * pressure * g(1);
+				gridnodes[jx][jy][jz].fz += vfrac[i] * pressure * g(2);
+
 				numNeighs[i] += 1;
+
+//				if (g(0) != 0.0) {
+//					printf("x gradient = %f\n", g(0));
+//				}
 			}
 		}
-		//}
 	}
 
 	// normalize grid data
@@ -487,6 +517,39 @@ void PairULSPHBG::ScatterToGrid() {
 					gridnodes[ix][iy][iz].vy /= gridnodes[ix][iy][iz].mass;
 					gridnodes[ix][iy][iz].vz /= gridnodes[ix][iy][iz].mass;
 					//printf("grid node y velocity = %f\n", gridnodes[ix][iy][iz].vy);
+				}
+
+//				if (gridnodes[ix][iy][iz].fx != 0.0) {
+//					printf("grid node x force = %f\n", gridnodes[ix][iy][iz].fx);
+//				}
+
+			}
+		}
+	}
+
+}
+
+/*
+ * update grid velocities using grid forces
+ */
+
+void PairULSPHBG::UpdateGridVelocities() {
+
+	int ix, iy, iz;
+	double dtm;
+
+	for (ix = 0; ix < grid_nx; ix++) {
+		for (iy = 0; iy < grid_ny; iy++) {
+			for (iz = 0; iz < grid_nz; iz++) {
+				if (gridnodes[ix][iy][iz].mass > 1.0e-8) {
+					dtm = update->dt / gridnodes[ix][iy][iz].mass;
+					gridnodes[ix][iy][iz].vx_new = gridnodes[ix][iy][iz].vx + dtm * gridnodes[ix][iy][iz].fx;
+					gridnodes[ix][iy][iz].vy_new = gridnodes[ix][iy][iz].vy + dtm * gridnodes[ix][iy][iz].fy;
+					gridnodes[ix][iy][iz].vz_new = gridnodes[ix][iy][iz].vz + dtm * gridnodes[ix][iy][iz].fz;
+
+					//if (gridnodes[ix][iy][iz].vx != 0.0) {
+					//	printf("grid node x vel after update = %f\n", gridnodes[ix][iy][iz].vx);
+					//}
 				}
 			}
 		}
@@ -503,15 +566,18 @@ void PairULSPHBG::GatherFromGrid() {
 	int i;
 	int ix, iy, iz, jx, jy, jz;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
-	Vector3d g, dx, vel_grid, vel_particle, vel_diff;
+	Vector3d g, vel_grid;
 	Matrix3d velocity_gradient;
-	double delx, dely, delz, wfx, wfy, wfz, wfdx, wfdy, wfdz;
+	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf, wfdx, wfdy;
+	double vx_PIC, vy_PIC, vx_FLIP, vy_FLIP; // new particle velocities
+	double alpha = 1.0 ;
 
 	// transfer particle velocities to grid nodes
 	for (i = 0; i < nlocal; i++) {
 
 		velocity_gradient.setZero();
-
+		vx_PIC = vy_PIC = 0.0;
+		vx_FLIP = vy_FLIP = 0.0;
 		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
 		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
 		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
@@ -519,68 +585,118 @@ void PairULSPHBG::GatherFromGrid() {
 		ix = icellsize * px_shifted;
 		iy = icellsize * py_shifted;
 		iz = icellsize * pz_shifted;
+		jz = iz; // for now, we focus on 2d
 
-		vel_particle << v[i][0], v[i][1], v[i][2];
+		//printf("\nparticle velocity is %f %f\n", v[i][0], v[i][1]);
+		//printf("grid x velocity near particle is %f\n", gridnodes[ix][iy][iz].vx);
+		//printf("grid y velocity near particle is %f\n", gridnodes[ix][iy][iz].vy);
 
 		for (jx = ix - 1; jx < ix + 3; jx++) {
-			jz = iz;
-			for (jy = iy - 1; jy < iy + 3; jy++) {
-				//for (jz = iz - 1; jz < iz + 3; jz++) {
 
-				// check that cell indices are within bounds
-				if ((jx < 0) || (jx >= grid_nx)) {
-					printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
-					error->one(FLERR, "");
-				}
+			// check that cell indices are within bounds
+			if ((jx < 0) || (jx >= grid_nx)) {
+				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+				error->one(FLERR, "");
+			}
+
+			delx_scaled = px_shifted * icellsize - 1.0 * jx;
+			delx_scaled_abs = fabs(delx_scaled);
+			wfx = DisneyKernel(delx_scaled_abs);
+			wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
+			if (delx_scaled < 0.0)
+				wfdx = -wfdx;
+
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+
 				if ((jy < 0) || (jy >= grid_ny)) {
 					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
 					error->one(FLERR, "");
 				}
-				if ((jz < 0) || (jz >= grid_nz)) {
-					printf("z cell indez %d is outside range 0 .. %d\n", jz, grid_nz);
-					error->one(FLERR, "");
-				}
 
-				// scaled distance between particle and grid node
-				delx = fabs(px_shifted * icellsize - jx);
-				dely = fabs(py_shifted * icellsize - jy);
-				delz = fabs(pz_shifted * icellsize - jz); // already scaled
+				dely_scaled = py_shifted * icellsize - 1.0 * jy;
+				dely_scaled_abs = fabs(dely_scaled);
+				wfy = DisneyKernel(dely_scaled_abs);
+				wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
+				if (dely_scaled < 0.0)
+					wfdy = -wfdy;
 
-				wfx = DisneyKernel(delx);
-				wfy = DisneyKernel(dely);
-				wfz = DisneyKernel(delz);
+				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
 
-				wfdx = DisneyKernelDerivative(delx) * icellsize;
-				wfdy = DisneyKernelDerivative(dely) * icellsize;
-				wfdz = DisneyKernelDerivative(delz);
-
-				dx(0) = px_shifted - jx * cellsize;
-				dx(1) = py_shifted - jy * cellsize;
-				dx(2) = 0.0; //pz_shifted - jz * cellsize;
-
-				g(0) = wfdx * wfy;
+				g(0) = wfdx * wfy; // this is the kernel gradient
 				g(1) = wfdy * wfx;
 				g(2) = 0.0;
 
-				if ((dx(0)) < 0.0) g(0) *= -1.0;
-				if ((dx(1)) < 0.0) g(1) *= -1.0;
+				vel_grid << gridnodes[jx][jy][jz].vx_new, gridnodes[jx][jy][jz].vy_new, gridnodes[jx][jy][jz].vz_new;
+				velocity_gradient += vel_grid * g.transpose();
 
-				vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy , gridnodes[jx][jy][jz].vz;
+				vx_PIC += gridnodes[jx][jy][jz].vx_new * wf;
+				vy_PIC += gridnodes[jx][jy][jz].vy_new * wf;
 
-
-
-				vel_diff = vel_grid - vel_particle;
-//				if (vel_diff.norm() > 1.0e-8) {
-//					printf("vel grid=%f, vel particle=%f\n", vel_grid(0), vel_particle(0));
-//				}
-
-				velocity_gradient += vel_diff * g.transpose();
+				vx_FLIP += (gridnodes[jx][jy][jz].vx_new - gridnodes[jx][jy][jz].vx) * wf;
+				vy_FLIP += (gridnodes[jx][jy][jz].vy_new - gridnodes[jx][jy][jz].vy) * wf;
 			}
-			//}
 		}
 
+		//printf("new particle velocity is %f %f\n", pvx_new, pvy_new);
+
 		L[i] = velocity_gradient;
+
+		vx_FLIP += v[i][0];
+		vy_FLIP += v[i][1];
+
+		v[i][0] = (1.0 - alpha) * vx_PIC + alpha * vx_FLIP;
+		v[i][1] = (1.0 - alpha) * vy_PIC + alpha * vy_FLIP;
+		v[i][2] = 0.0;
+
+
 	}
+}
+
+/* ---------------------------------------------------------------------- */
+void PairULSPHBG::UpdateDeformationGradient() {
+
+	// given the velocity gradient, update the deformation gradient
+	double **smd_data_9 = atom->smd_data_9;
+	double *vfrac = atom->vfrac;
+	int nlocal = atom->nlocal;
+	int i;
+	Matrix3d F, Fincr, eye;
+	eye.setIdentity();
+
+	// transfer particle velocities to grid nodes
+	for (i = 0; i < nlocal; i++) {
+
+		F(0, 0) = smd_data_9[i][0];
+		F(0, 1) = smd_data_9[i][1];
+		F(0, 2) = smd_data_9[i][2];
+
+		F(1, 0) = smd_data_9[i][3];
+		F(1, 1) = smd_data_9[i][4];
+		F(1, 2) = smd_data_9[i][5];
+
+		F(2, 0) = smd_data_9[i][6];
+		F(2, 1) = smd_data_9[i][7];
+		F(2, 2) = smd_data_9[i][8];
+
+		Fincr = eye + update->dt * L[i];
+		F = Fincr * F;
+
+		vfrac[i] *= Fincr.determinant();
+
+		smd_data_9[i][0] = F(0, 0);
+		smd_data_9[i][1] = F(0, 1);
+		smd_data_9[i][2] = F(0, 2);
+
+		smd_data_9[i][3] = F(1, 0);
+		smd_data_9[i][4] = F(1, 1);
+		smd_data_9[i][5] = F(1, 2);
+
+		smd_data_9[i][6] = F(2, 0);
+		smd_data_9[i][7] = F(2, 1);
+		smd_data_9[i][8] = F(2, 2);
+
+	}
+
 }
 
 /* ---------------------------------------------------------------------- */
@@ -658,7 +774,7 @@ void PairULSPHBG::compute(int eflag, int vflag) {
 	}
 
 	/*
-	 * if this is the very first step, zero the array which holds the accumulated strain
+	 * if this is the very first step, zero the array which holds the deformation gradient
 	 */
 	if (update->ntimestep == 0) {
 		for (i = 0; i < nlocal; i++) {
@@ -671,27 +787,32 @@ void PairULSPHBG::compute(int eflag, int vflag) {
 		}
 	}
 
-	if (density_summation) {
-		//printf("dens summ\n");
-		PreCompute_DensitySummation();
-
-		for (i = 0; i < nlocal; i++) { //compute volumes from rho
-			itype = type[i];
-			if (setflag[itype][itype]) {
-				vfrac[i] = rmass[i] / rho[i];
-			}
-		}
-
-	}
-
-	if (velocity_gradient) {
-		PairULSPHBG::PreCompute(); // get velocity gradient and kernel gradient correction
-	}
+//	if (density_summation) {
+//		//printf("dens summ\n");
+//		PreCompute_DensitySummation();
+//
+//		for (i = 0; i < nlocal; i++) { //compute volumes from rho
+//			itype = type[i];
+//			if (setflag[itype][itype]) {
+//				vfrac[i] = rmass[i] / rho[i];
+//			}
+//		}
+//
+//	}
+//
+//	if (velocity_gradient) {
+//		PairULSPHBG::PreCompute(); // get velocity gradient and kernel gradient correction
+//	}
 
 	CreateGrid();
+	UpdateDeformationGradient();
 	ScatterToGrid();
+	UpdateGridVelocities();
 	GatherFromGrid();
+
 	DestroyGrid();
+
+	return;
 
 	PairULSPHBG::AssembleStressTensor();
 

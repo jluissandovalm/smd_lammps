@@ -3,7 +3,7 @@
 
 variable        rho equal 1 # mass density of water dropt
 variable        h equal 0.08 # characteristic smoothing length, used here only for determining 
-variable        K equal 1.0 # bulk modulus of the fluid
+variable        K equal 10.0 # bulk modulus of the fluid
 variable        hg equal 0 # hourglass control coefficient, must be zero for fluids.
 variable        art_visc equal 0.5 # We can set the artificial viscosity to zero if physical visc. is present.
 # ----
@@ -24,7 +24,7 @@ newton          off
 
 region          box block 0 10 0 10 -0.1 0.1 units box
 create_box      1 box
-region          sphere sphere 5 5 0 3 units box
+region          sphere sphere 5 3.2 0 3 units box
 variable        l0 equal 0.2
 lattice         sq ${l0}
 create_atoms    1 region sphere
@@ -56,8 +56,7 @@ variable        amz equal angmom(all,z) # angular momentum
 
 # time integration
 timestep        ${dt} # set an initial estimate for the zero-th timestep
-fix             dtfix all smd/adjust_dt 0.05 # dynamically adjust stable timestep
-fix             integration_fix all smd/integrate_ulsph # actual integration for equations of motion
+fix             integration_fix all smd/integrate_mpm # actual integration for equations of motion
 
 variable        dumpFreq equal 10
 dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
@@ -68,7 +67,7 @@ dump            dump_id all custom ${dumpFreq} dump.LAMMPS id type x y z &
 dump_modify     dump_id first yes
 
 thermo          100
-thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
+thermo_style    custom step ke pe v_etot c_alleint dt v_amz
 
 # Apply initial velocity conditions.
 # Select either case 1 / 2 / 3 by uncommenting lines below.
@@ -87,7 +86,7 @@ thermo_style    custom step ke pe v_etot c_alleint dt v_amz f_dtfix
 #run            1000
 velocity       all set 0 -0.2 0 units box
 #fix            23 all setforce 0 0 0 
-#velocity        all ramp vx    -0.1 0.1 x 0 10 units box
-fix             ywall all wall/reflect ylo 2.0
+#velocity        all ramp vx -0.1 0.1 x 0 10 units box
+fix             ywall all wall/reflect ylo 1.0
 
-run 1000
+run 5000

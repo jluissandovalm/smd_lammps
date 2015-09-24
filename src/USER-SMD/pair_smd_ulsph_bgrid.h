@@ -61,7 +61,9 @@ public:
 
 	void CreateGrid();
 	void ScatterToGrid();
+	void UpdateGridVelocities();
 	void GatherFromGrid();
+	void UpdateDeformationGradient();
 	void DestroyGrid();
 
 protected:
@@ -135,6 +137,8 @@ private:
 	struct Gridnode {
 		double mass;
 		double vx, vy, vz;
+		double vx_new, vy_new, vz_new;
+		double fx, fy, fz;
 	};
 
 	Gridnode ***gridnodes;
