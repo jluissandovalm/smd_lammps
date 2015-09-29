@@ -19,7 +19,7 @@ atom_style      smd
 comm_style      brick
 neighbor        ${skin} bin
 neigh_modify    every 10 delay 0 check yes
-comm_modify     vel yes
+
 newton          off
 
 region          box block 0 10 0 10 -0.1 0.1 units box
@@ -35,10 +35,12 @@ set             group all smd_mass_density ${rho}
 variable        h equal 2.4*${l0}
 set             group all diameter ${h}
 
+#variable        comm_cutoff equal 8.0*${h}
+comm_modify     vel yes #cutoff ${comm_cutoff}
 
 
 # this is an updated-Lagrangian pair style with Tait EOS and physical viscosity.
-pair_style      smd/ulsph_bgrd *DENSITY_CONTINUITY *NO_VELOCITY_GRADIENT *NO_GRADIENT_CORRECTION
+pair_style      smd/ulsph_bgrd 0.5
 #                           density speed_of_sound artif.visc.  heat.capacity hourglass
 pair_coeff      1 1 *COMMON ${rho}  ${c0}          ${art_visc}  0             ${hg} &
 		*EOS_TAIT 7 &
@@ -57,6 +59,7 @@ variable        amz equal angmom(all,z) # angular momentum
 
 # time integration
 timestep        ${dt} # set an initial estimate for the zero-th timestep
+fix             dtfix all smd/adjust_dt 0.4
 fix             integration_fix all smd/integrate_mpm # actual integration for equations of motion
 
 variable        dumpFreq equal 10
@@ -90,4 +93,4 @@ velocity       all set 0 -0.2 0 units box
 #velocity        all ramp vx -0.1 0.1 x 0 10 units box
 fix             ywall all wall/reflect ylo 1.0
 
-run 10000
+run  500

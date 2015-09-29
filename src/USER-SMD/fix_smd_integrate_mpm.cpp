@@ -125,6 +125,34 @@ void FixSMDIntegrateMpm::init() {
  ------------------------------------------------------------------------- */
 
 void FixSMDIntegrateMpm::initial_integrate(int vflag) {
+	double **v = atom->v;
+	double **f = atom->f;
+	double **vest = atom->vest;
+	double *rmass = atom->rmass;
+
+	int *mask = atom->mask;
+	int nlocal = atom->nlocal;
+	double dtfm;
+	int i;
+
+	if (igroup == atom->firstgroup)
+		nlocal = atom->nfirst;
+
+	for (i = 0; i < nlocal; i++) {
+		if (mask[i] & groupbit) {
+			dtfm = dtf / rmass[i];
+
+			v[i][0] += dtfm * f[i][0];
+			v[i][1] += dtfm * f[i][1];
+			v[i][2] += dtfm * f[i][2];
+
+			// extrapolate velocity from half- to full-step
+			vest[i][0] = v[i][0] + dtfm * f[i][0];
+			vest[i][1] = v[i][1] + dtfm * f[i][1];
+			vest[i][2] = v[i][2] + dtfm * f[i][2];
+
+		}
+	}
 
 }
 
@@ -132,36 +160,61 @@ void FixSMDIntegrateMpm::initial_integrate(int vflag) {
 
 void FixSMDIntegrateMpm::final_integrate() {
 
-//	double **x = atom->x;
-//		double **v = atom->v;
-//
-//		int *mask = atom->mask;
-//		int nlocal = atom->nlocal;
-//		double vsq, scale;
-//		int i;
-//
-//		if (igroup == atom->firstgroup)
-//			nlocal = atom->nfirst;
-//
-//		for (i = 0; i < nlocal; i++) {
-//			if (mask[i] & groupbit) {
-//
-//				if (vlimit > 0.0) {
-//					vsq = v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2];
-//					if (vsq > vlimitsq) {
-//						scale = sqrt(vlimitsq / vsq);
-//						v[i][0] *= scale;
-//						v[i][1] *= scale;
-//						v[i][2] *= scale;
-//					}
-//				}
-//
-//			x[i][0] += dtv * v[i][0];
-//			x[i][1] += dtv * v[i][1];
-//			x[i][2] += dtv * v[i][2];
-//
-//			}
-//		}
+	double **x = atom->x;
+	double **v = atom->v;
+	double **f = atom->f;
+	double *e = atom->e;
+	double *de = atom->de;
+	double *rmass = atom->rmass;
+
+	int *mask = atom->mask;
+	int nlocal = atom->nlocal;
+	double vsq, scale, dtfm;
+	int i, itmp;
+
+	Vector3d *particleVelocities = (Vector3d *) force->pair->extract("smd/mpm/particleVelocities_ptr", itmp);
+	if (particleVelocities == NULL) {
+		error->one(FLERR, "fix smd/integrate_mpm failed to accesss particleVelocities array");
+	}
+
+	Vector3d *particleAccelerations = (Vector3d *) force->pair->extract("smd/mpm/particleAccelerations_ptr", itmp);
+	if (particleAccelerations == NULL) {
+		error->one(FLERR, "fix smd/integrate_mpm failed to accesss particleAccelerations array");
+	}
+
+	if (igroup == atom->firstgroup)
+		nlocal = atom->nfirst;
+
+	for (i = 0; i < nlocal; i++) {
+		if (mask[i] & groupbit) {
+
+			if (vlimit > 0.0) {
+				vsq = v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2];
+				if (vsq > vlimitsq) {
+					scale = sqrt(vlimitsq / vsq);
+					v[i][0] *= scale;
+					v[i][1] *= scale;
+					v[i][2] *= scale;
+				}
+			}
+
+			x[i][0] += dtv * particleVelocities[i](0);
+			x[i][1] += dtv * particleVelocities[i](1);
+			x[i][2] += dtv * particleVelocities[i](2);
+
+
+			dtfm = dtf / rmass[i];
+
+			v[i][0] += dtv * particleAccelerations[i](0) + dtfm * f[i][0];
+			v[i][1] += dtv * particleAccelerations[i](1) + dtfm * f[i][1];
+			v[i][2] += dtv * particleAccelerations[i](2) + dtfm * f[i][2];
+
+			e[i] += dtv * de[i];
+
+
+		}
+	}
+
 }
 
 /* ---------------------------------------------------------------------- */

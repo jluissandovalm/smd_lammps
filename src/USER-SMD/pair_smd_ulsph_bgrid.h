@@ -60,16 +60,13 @@ public:
 	double effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype);
 
 	void CreateGrid();
-	void InitAngularMomentum();
-	void ComputeInertiaTensors();
-	void ScatterToGrid();
 	void UpdateGridVelocities();
-	void GatherFromGrid();
 	void UpdateDeformationGradient();
 	void DestroyGrid();
 
 	void PointsToGrid();
 	void DiscreteSolution();
+	void ComputeGridForces();
 	void GridToPoints();
 	void UpdateStrainStress();
 
@@ -79,24 +76,17 @@ protected:
 	double *rho0; // reference mass density per type
 	double *Q1; // linear artificial viscosity coeff
 	int *eos, *viscosity, *strength; // eos and strength material models
-	double **artificial_pressure; // true/false: use Monaghan's artificial pressure correction?
-	double **artificial_stress; // artificial stress amplitude
-
-	double *onerad_dynamic, *onerad_frozen;
-	double *maxrad_dynamic, *maxrad_frozen;
 
 	void allocate();
 
 	int nmax; // max number of atoms on this proc
 	int *numNeighs;
-	Matrix3d *K;
-	double *shepardWeight, *c0, *rho;
+	double *c0;
 	Matrix3d *stressTensor, *L;
 
 	double dtCFL;
 
-	Vector3d *Lp; // per-particle angular momentum
-	Matrix3d *Kp; // per-particle inertia tensor
+	Vector3d *particleVelocities, *particleAccelerations; // per-particle angular momentum
 
 private:
 
@@ -137,17 +127,9 @@ private:
 	};
 	double **Lookup; // holds per-type material parameters for the quantities defined in enum statement above.
 
-	bool velocity_gradient_required;
-	int updateFlag; // indicates if any relative particle pair movement is significant compared to smoothing length
-
-
-	bool density_summation, density_continuity, velocity_gradient, gradient_correction_flag;
-	double *neighborhoodRho; // SPH average of density field
-
 	struct Gridnode {
 		double mass;
 		double vx, vy, vz;
-		double vx_new, vy_new, vz_new;
 		double fx, fy, fz;
 	};
 
