@@ -356,7 +356,7 @@ void PairULSPHBG::CreateGrid() {
 	int i;
 	int ix, iy, iz;
 	double minx, miny, minz, maxx, maxy, maxz;
-	cellsize = 2.4*0.2; // cell size
+	cellsize = 2.4 * 0.2; // cell size
 	icellsize = 1.0 / cellsize; // inverse of cell size
 
 	// get bounds of this processor's simulation box
@@ -412,6 +412,346 @@ void PairULSPHBG::CreateGrid() {
 				gridnodes[ix][iy][iz].fz = 0.0;
 			}
 		}
+	}
+
+}
+
+/*
+ * Steps 1 to 3, i.e.,
+ * 1) compute node mass
+ * 2) compute node momentum
+ * 3) compute node velocity
+ */
+
+void PairULSPHBG::PointsToGrid() {
+	double **x = atom->x;
+	double **v = atom->v;
+	double *rmass = atom->rmass;
+	int nlocal = atom->nlocal;
+	int nall = nlocal + atom->nghost;
+	int i;
+	int ix, iy, iz, jx, jy, jz;
+	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wf, wfx, wfy;
+	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
+	double ekin_particles = 0.0;
+	double particle_mom_x = 0.0;
+
+	for (i = 0; i < nall; i++) {
+		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
+
+		ix = icellsize * px_shifted;
+		iy = icellsize * py_shifted;
+		iz = icellsize * pz_shifted;
+		jz = iz; // for now, we focus on 2d
+
+		ekin_particles += 0.5 * rmass[i] * (v[i][0] * v[i][0] + v[i][1] * v[i][1]);
+		particle_mom_x += rmass[i] * v[i][0];
+
+		for (jx = ix - 1; jx < ix + 3; jx++) {
+
+			// check that cell indices are within bounds
+			if ((jx < 0) || (jx >= grid_nx)) {
+				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+				error->one(FLERR, "");
+			}
+
+			delx_scaled = px_shifted * icellsize - 1.0 * jx;
+			delx_scaled_abs = fabs(delx_scaled);
+			wfx = DisneyKernel(delx_scaled_abs);
+
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+
+				if ((jy < 0) || (jy >= grid_ny)) {
+					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+					error->one(FLERR, "");
+				}
+
+				dely_scaled = py_shifted * icellsize - 1.0 * jy;
+				dely_scaled_abs = fabs(dely_scaled);
+				wfy = DisneyKernel(dely_scaled_abs);
+
+				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+				gridnodes[jx][jy][jz].mass += wf * rmass[i];
+				gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
+				gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
+				gridnodes[jx][jy][jz].vz += wf * rmass[i] * 0.0;
+
+			}
+		}
+	}
+
+	// normalize grid data
+	double ekin_grid = 0.0;
+	double grid_mom_x = 0.0;
+	for (ix = 0; ix < grid_nx; ix++) {
+		for (iy = 0; iy < grid_ny; iy++) {
+			for (iz = 0; iz < grid_nz; iz++) {
+				if (gridnodes[ix][iy][iz].mass > 1.0e-12) {
+					gridnodes[ix][iy][iz].vx /= gridnodes[ix][iy][iz].mass;
+					gridnodes[ix][iy][iz].vy /= gridnodes[ix][iy][iz].mass;
+					gridnodes[ix][iy][iz].vz /= gridnodes[ix][iy][iz].mass;
+
+					ekin_grid += 0.5 * gridnodes[ix][iy][iz].mass
+							* (gridnodes[ix][iy][iz].vx * gridnodes[ix][iy][iz].vx
+									+ gridnodes[ix][iy][iz].vy * gridnodes[ix][iy][iz].vy);
+					grid_mom_x += gridnodes[ix][iy][iz].mass * gridnodes[ix][iy][iz].vx;
+				}
+			}
+		}
+	}
+	//printf("particle kinetic energy is %f, grid kinetic energy is %f, ratio is %f\n", ekin_grid, ekin_particles,
+	//		ekin_grid / ekin_particles);
+	//printf("particle x momentum is %f\n", particle_mom_x);
+	//printf("grid x momentum is %f\n", grid_mom_x);
+
+}
+
+/*
+ * Solve the momentum balance on the grid
+ * 4) compute particle deformation gradient
+ * 5) update particle strain and compute updated particle stress
+ * 6) compute internal grid forces from particle stresses
+ */
+
+void PairULSPHBG::DiscreteSolution() {
+
+	double **x = atom->x;
+	double *vfrac = atom->vfrac;
+	int nlocal = atom->nlocal;
+	int i;
+	int ix, iy, iz, jx, jy, jz;
+	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
+	Vector3d g, vel_grid;
+	Matrix3d velocity_gradient;
+	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf, wfdx, wfdy;
+	double pressure;
+
+	// compute deformation gradient
+	for (i = 0; i < nlocal; i++) {
+		velocity_gradient.setZero();
+		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
+
+		ix = icellsize * px_shifted;
+		iy = icellsize * py_shifted;
+		iz = icellsize * pz_shifted;
+		jz = iz; // for now, we focus on 2d
+
+		for (jx = ix - 1; jx < ix + 3; jx++) {
+
+			// check that cell indices are within bounds
+			if ((jx < 0) || (jx >= grid_nx)) {
+				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+				error->one(FLERR, "");
+			}
+
+			delx_scaled = px_shifted * icellsize - 1.0 * jx;
+			delx_scaled_abs = fabs(delx_scaled);
+			wfx = DisneyKernel(delx_scaled_abs);
+			wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
+			if (delx_scaled < 0.0)
+				wfdx = -wfdx;
+
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+
+				if ((jy < 0) || (jy >= grid_ny)) {
+					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+					error->one(FLERR, "");
+				}
+
+				dely_scaled = py_shifted * icellsize - 1.0 * jy;
+				dely_scaled_abs = fabs(dely_scaled);
+				wfy = DisneyKernel(dely_scaled_abs);
+				wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
+				if (dely_scaled < 0.0)
+					wfdy = -wfdy;
+
+				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+				g(0) = wfdx * wfy; // this is the kernel gradient
+				g(1) = wfdy * wfx;
+				g(2) = 0.0;
+
+				vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy, gridnodes[jx][jy][jz].vz;
+				velocity_gradient += vel_grid * g.transpose();
+			}
+		}
+		L[i] = velocity_gradient;
+	}
+	// ---- end velocity gradients ----
+
+	UpdateStrainStress();
+
+	// ---- compute internal forces ---
+	for (i = 0; i < nlocal; i++) {
+		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
+
+		ix = icellsize * px_shifted;
+		iy = icellsize * py_shifted;
+		iz = icellsize * pz_shifted;
+		jz = iz; // for now, we focus on 2d
+		pressure = -stressTensor[i].trace() / 3.0;
+
+		for (jx = ix - 1; jx < ix + 3; jx++) {
+
+			// check that cell indices are within bounds
+			if ((jx < 0) || (jx >= grid_nx)) {
+				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+				error->one(FLERR, "");
+			}
+
+			delx_scaled = px_shifted * icellsize - 1.0 * jx;
+			delx_scaled_abs = fabs(delx_scaled);
+			wfx = DisneyKernel(delx_scaled_abs);
+			wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
+			if (delx_scaled < 0.0)
+				wfdx = -wfdx;
+
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+
+				if ((jy < 0) || (jy >= grid_ny)) {
+					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+					error->one(FLERR, "");
+				}
+
+				dely_scaled = py_shifted * icellsize - 1.0 * jy;
+				dely_scaled_abs = fabs(dely_scaled);
+				wfy = DisneyKernel(dely_scaled_abs);
+				wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
+				if (dely_scaled < 0.0)
+					wfdy = -wfdy;
+
+				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+				g(0) = wfdx * wfy; // this is the kernel gradient
+				g(1) = wfdy * wfx;
+				g(2) = 0.0;
+
+				gridnodes[jx][jy][jz].fx += vfrac[i] * pressure * g(0);
+				gridnodes[jx][jy][jz].fy += vfrac[i] * pressure * g(1);
+				gridnodes[jx][jy][jz].fz += vfrac[i] * pressure * g(2);
+
+			}
+		}
+	}
+
+}
+
+/*
+ * update grid velocities using grid forces
+ */
+
+void PairULSPHBG::UpdateGridVelocities() {
+
+	int ix, iy, iz;
+	double dtm;
+
+	for (ix = 0; ix < grid_nx; ix++) {
+		for (iy = 0; iy < grid_ny; iy++) {
+			for (iz = 0; iz < grid_nz; iz++) {
+				if (gridnodes[ix][iy][iz].mass > 1.0e-8) {
+					dtm = update->dt / gridnodes[ix][iy][iz].mass;
+					gridnodes[ix][iy][iz].vx = gridnodes[ix][iy][iz].vx + dtm * gridnodes[ix][iy][iz].fx;
+					gridnodes[ix][iy][iz].vy = gridnodes[ix][iy][iz].vy + dtm * gridnodes[ix][iy][iz].fy;
+					gridnodes[ix][iy][iz].vz = gridnodes[ix][iy][iz].vz + dtm * gridnodes[ix][iy][iz].fz;
+				}
+			}
+		}
+	}
+}
+
+void PairULSPHBG::GridToPoints() {
+
+	double **x = atom->x;
+	double **v = atom->v;
+	int nlocal = atom->nlocal;
+	int i;
+	int ix, iy, iz, jx, jy, jz;
+	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
+	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf;
+
+	for (i = 0; i < nlocal; i++) {
+		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
+
+		ix = icellsize * px_shifted;
+		iy = icellsize * py_shifted;
+		iz = icellsize * pz_shifted;
+		jz = iz; // for now, we focus on 2d
+
+		for (jx = ix - 1; jx < ix + 3; jx++) {
+
+			// check that cell indices are within bounds
+			if ((jx < 0) || (jx >= grid_nx)) {
+				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
+				error->one(FLERR, "");
+			}
+
+			delx_scaled = px_shifted * icellsize - 1.0 * jx;
+			delx_scaled_abs = fabs(delx_scaled);
+			wfx = DisneyKernel(delx_scaled_abs);
+
+			for (jy = iy - 1; jy < iy + 3; jy++) {
+
+				if ((jy < 0) || (jy >= grid_ny)) {
+					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+					error->one(FLERR, "");
+				}
+
+				dely_scaled = py_shifted * icellsize - 1.0 * jy;
+				dely_scaled_abs = fabs(dely_scaled);
+				wfy = DisneyKernel(dely_scaled_abs);
+
+				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+				x[i][0] += update->dt * wf * gridnodes[jx][jy][jz].vx;
+				x[i][1] += update->dt * wf * gridnodes[jx][jy][jz].vy;
+
+				if (gridnodes[jx][jy][jz].mass > 1.0e-12) {
+					v[i][0] += update->dt * wf * gridnodes[jx][jy][jz].fx / gridnodes[jx][jy][jz].mass;
+					v[i][1] += update->dt * wf * gridnodes[jx][jy][jz].fy / gridnodes[jx][jy][jz].mass;
+				}
+
+			}
+		}
+	}
+
+}
+
+/*
+ *
+ */
+
+void PairULSPHBG::UpdateStrainStress() {
+
+	double *rmass = atom->rmass;
+	double *vfrac = atom->vfrac;
+	int *type = atom->type;
+	int nlocal = atom->nlocal;
+	int i, itype;
+	double J, pressure, rho;
+	Matrix3d eye;
+	eye.setIdentity();
+
+	// compute deformation gradient
+	for (i = 0; i < nlocal; i++) {
+
+		J = (eye + update->dt * L[i]).determinant();
+		vfrac[i] *= J;
+
+		rho = rmass[i] / vfrac[i];
+		itype = type[i];
+		TaitEOS_density(Lookup[EOS_TAIT_EXPONENT][itype], Lookup[REFERENCE_SOUNDSPEED][itype], Lookup[REFERENCE_DENSITY][itype],
+				rho, pressure, c0[i]);
+		stressTensor[i] = -pressure * eye;
+
 	}
 
 }
@@ -774,34 +1114,6 @@ void PairULSPHBG::ScatterToGrid() {
 
 }
 
-/*
- * update grid velocities using grid forces
- */
-
-void PairULSPHBG::UpdateGridVelocities() {
-
-	int ix, iy, iz;
-	double dtm;
-
-	for (ix = 0; ix < grid_nx; ix++) {
-		for (iy = 0; iy < grid_ny; iy++) {
-			for (iz = 0; iz < grid_nz; iz++) {
-				if (gridnodes[ix][iy][iz].mass > 1.0e-8) {
-					dtm = update->dt / gridnodes[ix][iy][iz].mass;
-					gridnodes[ix][iy][iz].vx_new = gridnodes[ix][iy][iz].vx + dtm * gridnodes[ix][iy][iz].fx;
-					gridnodes[ix][iy][iz].vy_new = gridnodes[ix][iy][iz].vy + dtm * gridnodes[ix][iy][iz].fy;
-					gridnodes[ix][iy][iz].vz_new = gridnodes[ix][iy][iz].vz + dtm * gridnodes[ix][iy][iz].fz;
-
-					//if (gridnodes[ix][iy][iz].vx != 0.0) {
-					//	printf("grid node x vel after update = %f\n", gridnodes[ix][iy][iz].vx);
-					//}
-				}
-			}
-		}
-	}
-
-}
-
 /* ---------------------------------------------------------------------- */
 
 void PairULSPHBG::GatherFromGrid() {
@@ -816,7 +1128,7 @@ void PairULSPHBG::GatherFromGrid() {
 	Matrix3d velocity_gradient;
 	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf, wfdx, wfdy;
 	double vx_PIC, vy_PIC, vx_FLIP, vy_FLIP; // new particle velocities
-	double alpha = 0.99;
+	double alpha = 1.0;
 	double shepard_weight;
 	double ekin_particles = 0.0;
 
@@ -1066,15 +1378,10 @@ void PairULSPHBG::compute(int eflag, int vflag) {
 
 	CreateGrid();
 
-	if (update->ntimestep == 0) {
-		InitAngularMomentum();
-	}
-
-	ComputeInertiaTensors();
-	ScatterToGrid(); // 1) transfer velocities to grid (step 1) and 2) calculate grid forces (step 3)
-	UpdateGridVelocities(); // (step 4), now have v(n+1) on grid nodes
-	GatherFromGrid();
-	UpdateDeformationGradient();
+	PointsToGrid();
+	DiscreteSolution();
+	UpdateGridVelocities();
+	GridToPoints();
 
 	DestroyGrid();
 

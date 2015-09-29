@@ -132,36 +132,36 @@ void FixSMDIntegrateMpm::initial_integrate(int vflag) {
 
 void FixSMDIntegrateMpm::final_integrate() {
 
-	double **x = atom->x;
-		double **v = atom->v;
-
-		int *mask = atom->mask;
-		int nlocal = atom->nlocal;
-		double vsq, scale;
-		int i;
-
-		if (igroup == atom->firstgroup)
-			nlocal = atom->nfirst;
-
-		for (i = 0; i < nlocal; i++) {
-			if (mask[i] & groupbit) {
-
-				if (vlimit > 0.0) {
-					vsq = v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2];
-					if (vsq > vlimitsq) {
-						scale = sqrt(vlimitsq / vsq);
-						v[i][0] *= scale;
-						v[i][1] *= scale;
-						v[i][2] *= scale;
-					}
-				}
-
-			x[i][0] += dtv * v[i][0];
-			x[i][1] += dtv * v[i][1];
-			x[i][2] += dtv * v[i][2];
-
-			}
-		}
+//	double **x = atom->x;
+//		double **v = atom->v;
+//
+//		int *mask = atom->mask;
+//		int nlocal = atom->nlocal;
+//		double vsq, scale;
+//		int i;
+//
+//		if (igroup == atom->firstgroup)
+//			nlocal = atom->nfirst;
+//
+//		for (i = 0; i < nlocal; i++) {
+//			if (mask[i] & groupbit) {
+//
+//				if (vlimit > 0.0) {
+//					vsq = v[i][0] * v[i][0] + v[i][1] * v[i][1] + v[i][2] * v[i][2];
+//					if (vsq > vlimitsq) {
+//						scale = sqrt(vlimitsq / vsq);
+//						v[i][0] *= scale;
+//						v[i][1] *= scale;
+//						v[i][2] *= scale;
+//					}
+//				}
+//
+//			x[i][0] += dtv * v[i][0];
+//			x[i][1] += dtv * v[i][1];
+//			x[i][2] += dtv * v[i][2];
+//
+//			}
+//		}
 }
 
 /* ---------------------------------------------------------------------- */

@@ -68,6 +68,11 @@ public:
 	void UpdateDeformationGradient();
 	void DestroyGrid();
 
+	void PointsToGrid();
+	void DiscreteSolution();
+	void GridToPoints();
+	void UpdateStrainStress();
+
 protected:
 
 	double *c0_type; // reference speed of sound defined per particle type
