@@ -60,6 +60,8 @@ public:
 	double effective_shear_modulus(const Matrix3d d_dev, const Matrix3d deltaStressDev, const double dt, const int itype);
 
 	void CreateGrid();
+	void InitAngularMomentum();
+	void ComputeInertiaTensors();
 	void ScatterToGrid();
 	void UpdateGridVelocities();
 	void GatherFromGrid();
@@ -87,6 +89,9 @@ protected:
 	Matrix3d *stressTensor, *L;
 
 	double dtCFL;
+
+	Vector3d *Lp; // per-particle angular momentum
+	Matrix3d *Kp; // per-particle inertia tensor
 
 private:
 

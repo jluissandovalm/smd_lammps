@@ -54,6 +54,7 @@ compute         D all smd/ulsph_strain_rate
 variable        etot equal ke+c_alleint+pe
 variable        amz equal angmom(all,z) # angular momentum
 
+
 # time integration
 timestep        ${dt} # set an initial estimate for the zero-th timestep
 fix             integration_fix all smd/integrate_mpm # actual integration for equations of motion
@@ -89,4 +90,4 @@ velocity       all set 0 -0.2 0 units box
 #velocity        all ramp vx -0.1 0.1 x 0 10 units box
 fix             ywall all wall/reflect ylo 1.0
 
-run 5000
+run 10000
