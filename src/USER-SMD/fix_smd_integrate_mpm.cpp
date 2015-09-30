@@ -138,21 +138,21 @@ void FixSMDIntegrateMpm::initial_integrate(int vflag) {
 	if (igroup == atom->firstgroup)
 		nlocal = atom->nfirst;
 
-	for (i = 0; i < nlocal; i++) {
-		if (mask[i] & groupbit) {
-			dtfm = dtf / rmass[i];
-
-			v[i][0] += dtfm * f[i][0];
-			v[i][1] += dtfm * f[i][1];
-			v[i][2] += dtfm * f[i][2];
-
-			// extrapolate velocity from half- to full-step
-			vest[i][0] = v[i][0] + dtfm * f[i][0];
-			vest[i][1] = v[i][1] + dtfm * f[i][1];
-			vest[i][2] = v[i][2] + dtfm * f[i][2];
-
-		}
-	}
+//	for (i = 0; i < nlocal; i++) {
+//		if (mask[i] & groupbit) {
+//			dtfm = dtv / rmass[i];
+//
+//			v[i][0] += dtfm * f[i][0];
+//			v[i][1] += dtfm * f[i][1];
+//			v[i][2] += dtfm * f[i][2];
+//
+//			// extrapolate velocity from half- to full-step
+//			vest[i][0] = v[i][0] + dtfm * f[i][0];
+//			vest[i][1] = v[i][1] + dtfm * f[i][1];
+//			vest[i][2] = v[i][2] + dtfm * f[i][2];
+//
+//		}
+//	}
 
 }
 
@@ -198,19 +198,32 @@ void FixSMDIntegrateMpm::final_integrate() {
 				}
 			}
 
-			x[i][0] += dtv * particleVelocities[i](0);
-			x[i][1] += dtv * particleVelocities[i](1);
-			x[i][2] += dtv * particleVelocities[i](2);
+			dtfm = dtv / rmass[i];
+			//v[i][0] = particleVelocities[i](0) + dtv * particleAccelerations[i](0) + dtfm * f[i][0];
+			//v[i][1] = particleVelocities[i](1) + dtv * particleAccelerations[i](1) + dtfm * f[i][1];
+			//v[i][2] = particleVelocities[i](2) + dtv * particleAccelerations[i](2) + dtfm * f[i][2];
+			v[i][0] = particleVelocities[i](0) + dtfm * f[i][0];
+			v[i][1] = particleVelocities[i](1) + dtfm * f[i][1];
+			v[i][2] = particleVelocities[i](2) + dtfm * f[i][2];
 
+			x[i][0] += dtv * v[i][0];
+			x[i][1] += dtv * v[i][1];
+			x[i][2] += dtv * v[i][2];
 
-			dtfm = dtf / rmass[i];
+			v[i][0] += dtv * particleAccelerations[i](0);
+			v[i][1] += dtv * particleAccelerations[i](1);
+			v[i][2] += dtv * particleAccelerations[i](2);
 
-			v[i][0] += dtv * particleAccelerations[i](0) + dtfm * f[i][0];
-			v[i][1] += dtv * particleAccelerations[i](1) + dtfm * f[i][1];
-			v[i][2] += dtv * particleAccelerations[i](2) + dtfm * f[i][2];
+			// ODER --
+//			x[i][0] += dtv * particleVelocities[i](0);
+//			x[i][1] += dtv * particleVelocities[i](1);
+//			x[i][2] += dtv * particleVelocities[i](2);
+//
+//			v[i][0] += dtv * particleAccelerations[i](0) + dtfm * f[i][0];
+//			v[i][1] += dtv * particleAccelerations[i](1) + dtfm * f[i][1];
+//			v[i][2] += dtv * particleAccelerations[i](2) + dtfm * f[i][2];
 
 			e[i] += dtv * de[i];
-
 
 		}
 	}

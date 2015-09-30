@@ -103,9 +103,10 @@ PairULSPHBG::~PairULSPHBG() {
 
 void PairULSPHBG::CreateGrid() {
 	double **x = atom->x;
+	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int nall = nlocal + atom->nghost;
-	int i;
+	int i, itype;
 	int ix, iy, iz;
 	double minx, miny, minz, maxx, maxy, maxz;
 	icellsize = 1.0 / cellsize; // inverse of cell size
@@ -119,13 +120,17 @@ void PairULSPHBG::CreateGrid() {
 	;
 	maxx = maxy = maxz = -BIG
 	;
+
 	for (i = 0; i < nall; i++) {
-		minx = MIN(minx, x[i][0]);
-		maxx = MAX(maxx, x[i][0]);
-		miny = MIN(miny, x[i][1]);
-		maxy = MAX(maxy, x[i][1]);
-		minz = MIN(minz, x[i][2]);
-		maxz = MAX(maxz, x[i][2]);
+		itype = type[i];
+		if (setflag[itype][itype]) {
+			minx = MIN(minx, x[i][0]);
+			maxx = MAX(maxx, x[i][0]);
+			miny = MIN(miny, x[i][1]);
+			maxy = MAX(maxy, x[i][1]);
+			minz = MIN(minz, x[i][2]);
+			maxz = MAX(maxz, x[i][2]);
+		}
 	}
 
 	// we want the leftmost index to be 0, i.e. index(minx - kernel bandwidth > 0
@@ -175,58 +180,76 @@ void PairULSPHBG::PointsToGrid() {
 	double **x = atom->x;
 	double **v = atom->v;
 	double *rmass = atom->rmass;
+	int *type = atom->type;
 	int nlocal = atom->nlocal;
 	int nall = nlocal + atom->nghost;
-	int i;
+	int i, itype;
 	int ix, iy, iz, jx, jy, jz;
 	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wf, wfx, wfy;
+	double delz_scaled, delz_scaled_abs, wfz;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
 	double ekin_particles = 0.0;
 	double particle_mom_x = 0.0;
 
 	for (i = 0; i < nall; i++) {
-		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
-		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
-		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-		ix = icellsize * px_shifted;
-		iy = icellsize * py_shifted;
-		iz = icellsize * pz_shifted;
-		jz = iz; // for now, we focus on 2d
+		itype = type[i];
+		if (setflag[itype][itype]) {
 
-		ekin_particles += 0.5 * rmass[i] * (v[i][0] * v[i][0] + v[i][1] * v[i][1]);
-		particle_mom_x += rmass[i] * v[i][0];
+			px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+			py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+			pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-		for (jx = ix - 1; jx < ix + 3; jx++) {
+			ix = icellsize * px_shifted;
+			iy = icellsize * py_shifted;
+			iz = icellsize * pz_shifted;
 
-			// check that cell indices are within bounds
-			if ((jx < 0) || (jx >= grid_nx)) {
-				printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
-				error->one(FLERR, "");
-			}
+			ekin_particles += 0.5 * rmass[i] * (v[i][0] * v[i][0] + v[i][1] * v[i][1]);
+			particle_mom_x += rmass[i] * v[i][0];
 
-			delx_scaled = px_shifted * icellsize - 1.0 * jx;
-			delx_scaled_abs = fabs(delx_scaled);
-			wfx = DisneyKernel(delx_scaled_abs);
+			for (jx = ix - 1; jx < ix + 3; jx++) {
 
-			for (jy = iy - 1; jy < iy + 3; jy++) {
-
-				if ((jy < 0) || (jy >= grid_ny)) {
-					printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+				// check that cell indices are within bounds
+				if ((jx < 0) || (jx >= grid_nx)) {
+					printf("x cell index %d is outside range 0 .. %d\n", jx, grid_nx);
 					error->one(FLERR, "");
 				}
 
-				dely_scaled = py_shifted * icellsize - 1.0 * jy;
-				dely_scaled_abs = fabs(dely_scaled);
-				wfy = DisneyKernel(dely_scaled_abs);
+				delx_scaled = px_shifted * icellsize - 1.0 * jx;
+				delx_scaled_abs = fabs(delx_scaled);
+				wfx = DisneyKernel(delx_scaled_abs);
 
-				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+				for (jy = iy - 1; jy < iy + 3; jy++) {
 
-				gridnodes[jx][jy][jz].mass += wf * rmass[i];
-				gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
-				gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
-				gridnodes[jx][jy][jz].vz += wf * rmass[i] * 0.0;
+					if ((jy < 0) || (jy >= grid_ny)) {
+						printf("y cell indey %d is outside range 0 .. %d\n", jy, grid_ny);
+						error->one(FLERR, "");
+					}
 
+					dely_scaled = py_shifted * icellsize - 1.0 * jy;
+					dely_scaled_abs = fabs(dely_scaled);
+					wfy = DisneyKernel(dely_scaled_abs);
+
+					for (jz = iz - 1; jz < iz + 3; jz++) {
+
+						if ((jz < 0) || (jz >= grid_nz)) {
+							printf("z cell index %d is outside range 0 .. %d\n", jz, grid_nz);
+							error->one(FLERR, "");
+						}
+
+						delz_scaled = pz_shifted * icellsize - 1.0 * jz;
+						delz_scaled_abs = fabs(delz_scaled);
+						wfz = DisneyKernel(delz_scaled_abs);
+
+						wf = wfx * wfy * wfz; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+						gridnodes[jx][jy][jz].mass += wf * rmass[i];
+						gridnodes[jx][jy][jz].vx += wf * rmass[i] * v[i][0];
+						gridnodes[jx][jy][jz].vy += wf * rmass[i] * v[i][1];
+						gridnodes[jx][jy][jz].vz += wf * rmass[i] * v[i][2];
+					}
+
+				}
 			}
 		}
 	}
@@ -276,51 +299,62 @@ void PairULSPHBG::DiscreteSolution() {
 	Vector3d g, vel_grid;
 	Matrix3d velocity_gradient, D;
 	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf, wfdx, wfdy;
+	double delz_scaled, delz_scaled_abs, wfz, wfdz;
 
 	// compute deformation gradient
 	for (i = 0; i < nlocal; i++) {
-		velocity_gradient.setZero();
-		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
-		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
-		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
-
-		ix = icellsize * px_shifted;
-		iy = icellsize * py_shifted;
-		iz = icellsize * pz_shifted;
-		jz = iz; // for now, we focus on 2d
-
-		for (jx = ix - 1; jx < ix + 3; jx++) {
-
-			delx_scaled = px_shifted * icellsize - 1.0 * jx;
-			delx_scaled_abs = fabs(delx_scaled);
-			wfx = DisneyKernel(delx_scaled_abs);
-			wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
-			if (delx_scaled < 0.0)
-				wfdx = -wfdx;
-
-			for (jy = iy - 1; jy < iy + 3; jy++) {
-
-				dely_scaled = py_shifted * icellsize - 1.0 * jy;
-				dely_scaled_abs = fabs(dely_scaled);
-				wfy = DisneyKernel(dely_scaled_abs);
-				wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
-				if (dely_scaled < 0.0)
-					wfdy = -wfdy;
-
-				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
-
-				g(0) = wfdx * wfy; // this is the kernel gradient
-				g(1) = wfdy * wfx;
-				g(2) = 0.0;
-
-				vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy, gridnodes[jx][jy][jz].vz;
-				velocity_gradient += vel_grid * g.transpose();
-			}
-		}
-		L[i] = velocity_gradient;
 
 		itype = type[i];
 		if (setflag[itype][itype]) {
+
+			velocity_gradient.setZero();
+			px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+			py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+			pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
+
+			ix = icellsize * px_shifted;
+			iy = icellsize * py_shifted;
+			iz = icellsize * pz_shifted;
+
+			for (jx = ix - 1; jx < ix + 3; jx++) {
+
+				delx_scaled = px_shifted * icellsize - 1.0 * jx;
+				delx_scaled_abs = fabs(delx_scaled);
+				wfx = DisneyKernel(delx_scaled_abs);
+				wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
+				if (delx_scaled < 0.0)
+					wfdx = -wfdx;
+
+				for (jy = iy - 1; jy < iy + 3; jy++) {
+
+					dely_scaled = py_shifted * icellsize - 1.0 * jy;
+					dely_scaled_abs = fabs(dely_scaled);
+					wfy = DisneyKernel(dely_scaled_abs);
+					wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
+					if (dely_scaled < 0.0)
+						wfdy = -wfdy;
+
+					for (jz = iz - 1; jz < iz + 3; jz++) {
+
+						delz_scaled = pz_shifted * icellsize - 1.0 * jz;
+						delz_scaled_abs = fabs(delz_scaled);
+						wfz = DisneyKernel(delz_scaled_abs);
+						wfdz = DisneyKernelDerivative(delz_scaled_abs) * icellsize;
+						if (delz_scaled < 0.0)
+							wfdz = -wfdz;
+
+						wf = wfx * wfy * wfz; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+						g(0) = wfdx * wfy * wfz; // this is the kernel gradient
+						g(1) = wfdy * wfx * wfz;
+						g(2) = wfdz * wfx * wfy;
+
+						vel_grid << gridnodes[jx][jy][jz].vx, gridnodes[jx][jy][jz].vy, gridnodes[jx][jy][jz].vz;
+						velocity_gradient += vel_grid * g.transpose();
+					}
+				}
+			}
+			L[i] = velocity_gradient;
 
 			/*
 			 * accumulate strain increments
@@ -342,60 +376,72 @@ void PairULSPHBG::DiscreteSolution() {
 void PairULSPHBG::ComputeGridForces() {
 	double **x = atom->x;
 	double *vfrac = atom->vfrac;
+	int *type = atom->type;
 	int nall = atom->nlocal + atom->nghost;
-	int i;
+	int i, itype;
 	int ix, iy, iz, jx, jy, jz;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
 	Vector3d g, force;
 	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf, wfdx, wfdy;
-	//double pressure;
+	double delz_scaled, delz_scaled_abs, wfz, wfdz;
 
 	// ---- compute internal forces ---
 	for (i = 0; i < nall; i++) {
-		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
-		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
-		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-		ix = icellsize * px_shifted;
-		iy = icellsize * py_shifted;
-		iz = icellsize * pz_shifted;
-		jz = iz; // for now, we focus on 2d
-		//pressure = -stressTensor[i].trace() / 3.0;
+		itype = type[i];
+		if (setflag[itype][itype]) {
 
-		for (jx = ix - 1; jx < ix + 3; jx++) {
+			px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+			py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+			pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-			delx_scaled = px_shifted * icellsize - 1.0 * jx;
-			delx_scaled_abs = fabs(delx_scaled);
-			wfx = DisneyKernel(delx_scaled_abs);
-			wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
-			if (delx_scaled < 0.0)
-				wfdx = -wfdx;
+			ix = icellsize * px_shifted;
+			iy = icellsize * py_shifted;
+			iz = icellsize * pz_shifted;
 
-			for (jy = iy - 1; jy < iy + 3; jy++) {
+			for (jx = ix - 1; jx < ix + 3; jx++) {
 
-				dely_scaled = py_shifted * icellsize - 1.0 * jy;
-				dely_scaled_abs = fabs(dely_scaled);
-				wfy = DisneyKernel(dely_scaled_abs);
-				wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
-				if (dely_scaled < 0.0)
-					wfdy = -wfdy;
+				delx_scaled = px_shifted * icellsize - 1.0 * jx;
+				delx_scaled_abs = fabs(delx_scaled);
+				wfx = DisneyKernel(delx_scaled_abs);
+				wfdx = DisneyKernelDerivative(delx_scaled_abs) * icellsize;
+				if (delx_scaled < 0.0)
+					wfdx = -wfdx;
 
-				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+				for (jy = iy - 1; jy < iy + 3; jy++) {
 
-				g(0) = wfdx * wfy; // this is the kernel gradient
-				g(1) = wfdy * wfx;
-				g(2) = 0.0;
+					dely_scaled = py_shifted * icellsize - 1.0 * jy;
+					dely_scaled_abs = fabs(dely_scaled);
+					wfy = DisneyKernel(dely_scaled_abs);
+					wfdy = DisneyKernelDerivative(dely_scaled_abs) * icellsize;
+					if (dely_scaled < 0.0)
+						wfdy = -wfdy;
 
-				force = -vfrac[i] * stressTensor[i] * g;
+					for (jz = iz - 1; jz < iz + 3; jz++) {
 
-				gridnodes[jx][jy][jz].fx += force(0);
-				gridnodes[jx][jy][jz].fy += force(1);
-				gridnodes[jx][jy][jz].fz += force(2);
+						delz_scaled = pz_shifted * icellsize - 1.0 * jz;
+						delz_scaled_abs = fabs(delz_scaled);
+						wfz = DisneyKernel(delz_scaled_abs);
+						wfdz = DisneyKernelDerivative(delz_scaled_abs) * icellsize;
+						if (delz_scaled < 0.0)
+							wfdz = -wfdz;
 
+						wf = wfx * wfy * wfz; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+						g(0) = wfdx * wfy * wfz; // this is the kernel gradient
+						g(1) = wfdy * wfx * wfz;
+						g(2) = wfdz * wfx * wfy;
+
+						force = -vfrac[i] * stressTensor[i] * g;
+
+						gridnodes[jx][jy][jz].fx += force(0);
+						gridnodes[jx][jy][jz].fy += force(1);
+						gridnodes[jx][jy][jz].fz += force(2);
+					}
+				}
 			}
 		}
 	}
-
 }
 
 /*
@@ -424,50 +470,62 @@ void PairULSPHBG::UpdateGridVelocities() {
 void PairULSPHBG::GridToPoints() {
 
 	double **x = atom->x;
-	//double **v = atom->v;
+	int *type = atom->type;
 	int nlocal = atom->nlocal;
-	int i;
+	int i, itype;
 	int ix, iy, iz, jx, jy, jz;
 	double px_shifted, py_shifted, pz_shifted; // shifted coords of particles
 	double delx_scaled, delx_scaled_abs, dely_scaled, dely_scaled_abs, wfx, wfy, wf;
+	double delz_scaled, delz_scaled_abs, wfz;
 
 	for (i = 0; i < nlocal; i++) {
-		px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
-		py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
-		pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-		ix = icellsize * px_shifted;
-		iy = icellsize * py_shifted;
-		iz = icellsize * pz_shifted;
-		jz = iz; // for now, we focus on 2d
+		itype = type[i];
+		if (setflag[itype][itype]) {
 
-		particleVelocities[i].setZero();
-		particleAccelerations[i].setZero();
+			px_shifted = x[i][0] - min_ix * cellsize + 3 * cellsize;
+			py_shifted = x[i][1] - min_iy * cellsize + 3 * cellsize;
+			pz_shifted = x[i][2] - min_iz * cellsize + 3 * cellsize;
 
-		for (jx = ix - 1; jx < ix + 3; jx++) {
+			ix = icellsize * px_shifted;
+			iy = icellsize * py_shifted;
+			iz = icellsize * pz_shifted;
 
-			delx_scaled = px_shifted * icellsize - 1.0 * jx;
-			delx_scaled_abs = fabs(delx_scaled);
-			wfx = DisneyKernel(delx_scaled_abs);
+			particleVelocities[i].setZero();
+			particleAccelerations[i].setZero();
 
-			for (jy = iy - 1; jy < iy + 3; jy++) {
+			for (jx = ix - 1; jx < ix + 3; jx++) {
 
-				dely_scaled = py_shifted * icellsize - 1.0 * jy;
-				dely_scaled_abs = fabs(dely_scaled);
-				wfy = DisneyKernel(dely_scaled_abs);
+				delx_scaled = px_shifted * icellsize - 1.0 * jx;
+				delx_scaled_abs = fabs(delx_scaled);
+				wfx = DisneyKernel(delx_scaled_abs);
 
-				wf = wfx * wfy; // this is the total weight function -- a dyadic product of the cartesian weight functions
+				for (jy = iy - 1; jy < iy + 3; jy++) {
 
-				particleVelocities[i](0) += wf * gridnodes[jx][jy][jz].vx;
-				particleVelocities[i](1) += wf * gridnodes[jx][jy][jz].vy;
-				particleVelocities[i](2) += wf * gridnodes[jx][jy][jz].vz;
+					dely_scaled = py_shifted * icellsize - 1.0 * jy;
+					dely_scaled_abs = fabs(dely_scaled);
+					wfy = DisneyKernel(dely_scaled_abs);
 
-				if (gridnodes[jx][jy][jz].mass > 1.0e-12) {
-					particleAccelerations[i](0) += wf * gridnodes[jx][jy][jz].fx / gridnodes[jx][jy][jz].mass;
-					particleAccelerations[i](1) += wf * gridnodes[jx][jy][jz].fy / gridnodes[jx][jy][jz].mass;
-					particleAccelerations[i](2) += wf * gridnodes[jx][jy][jz].fz / gridnodes[jx][jy][jz].mass;
+					for (jz = iz - 1; jz < iz + 3; jz++) {
+
+						delz_scaled = pz_shifted * icellsize - 1.0 * jz;
+						delz_scaled_abs = fabs(delz_scaled);
+						wfz = DisneyKernel(delz_scaled_abs);
+
+						wf = wfx * wfy * wfz; // this is the total weight function -- a dyadic product of the cartesian weight functions
+
+						particleVelocities[i](0) += wf * gridnodes[jx][jy][jz].vx;
+						particleVelocities[i](1) += wf * gridnodes[jx][jy][jz].vy;
+						particleVelocities[i](2) += wf * gridnodes[jx][jy][jz].vz;
+
+						if (gridnodes[jx][jy][jz].mass > 1.0e-12) {
+							particleAccelerations[i](0) += wf * gridnodes[jx][jy][jz].fx / gridnodes[jx][jy][jz].mass;
+							particleAccelerations[i](1) += wf * gridnodes[jx][jy][jz].fy / gridnodes[jx][jy][jz].mass;
+							particleAccelerations[i](2) += wf * gridnodes[jx][jy][jz].fz / gridnodes[jx][jy][jz].mass;
+						}
+
+					}
 				}
-
 			}
 		}
 	}
@@ -626,7 +684,6 @@ void PairULSPHBG::compute(int eflag, int vflag) {
  viscosity contributions.
  ------------------------------------------------------------------------- */
 void PairULSPHBG::AssembleStressTensor() {
-	double *radius = atom->radius;
 	double *vfrac = atom->vfrac;
 	double *rmass = atom->rmass;
 	double *eff_plastic_strain = atom->eff_plastic_strain;
@@ -665,7 +722,7 @@ void PairULSPHBG::AssembleStressTensor() {
 			D = 0.5 * (L[i] + L[i].transpose());
 
 			J = (eye + update->dt * L[i]).determinant();
-			vfrac[i] *= J;
+			vfrac[i] += vfrac[i] * update->dt * D.trace();
 
 			vol = vfrac[i];
 			rho = rmass[i] / vfrac[i];
@@ -799,7 +856,6 @@ void PairULSPHBG::AssembleStressTensor() {
 			 */
 
 			de[i] = 0.5 * vfrac[i] * (stressTensor[i].cwiseProduct(D)).sum();
-
 
 		}
 		// end if (setflag[itype][itype] == 1)
