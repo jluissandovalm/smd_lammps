@@ -350,6 +350,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 	double **f = atom->f;
 	double *vfrac = atom->vfrac;
 	double *de = atom->de;
+	double *e = atom->e; // units: J
 	double *rmass = atom->rmass;
 	double *radius = atom->radius;
 	double *contact_radius = atom->contact_radius;
@@ -367,6 +368,9 @@ void PairULSPH::compute(int eflag, int vflag) {
 	Vector3d xi, xj, vi, vj, f_visc, sumForces, f_stress_new;
 	Vector3d gamma, dx0, du_est, du;
 	double r_ref, weight, p;
+
+	double dUdt, diffusivity;
+	diffusivity = 1.0e-1;
 
 	double ini_dist;
 	Matrix3d S, D, V, eye;
@@ -560,7 +564,15 @@ void PairULSPH::compute(int eflag, int vflag) {
 				sumForces = f_stress + f_visc;
 
 				// energy rate -- project velocity onto force vector
-				deltaE = sumForces.dot(dv);
+				//deltaE = sumForces.dot(dv); // internal energy
+
+				dUdt = 4 * diffusivity * ivol * jvol * (e[i] / ivol - e[j] / jvol) * wfd/r;
+				// insert SPH heat conduction expression here, based on difference
+				// of energy in particles i, j and thermal diffusion coefficient
+				deltaE = dUdt;
+				/*
+				 * e[i]
+				 */
 
 				// apply forces to pair of particles
 				f[i][0] += sumForces(0);
@@ -577,7 +589,7 @@ void PairULSPH::compute(int eflag, int vflag) {
 					f[j][0] -= sumForces(0);
 					f[j][1] -= sumForces(1);
 					f[j][2] -= sumForces(2);
-					de[j] += deltaE;
+					de[j] -= deltaE;
 
 					shepardWeight[j] += wf * ivol;
 					numNeighs[j] += 1;
